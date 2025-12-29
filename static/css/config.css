@@ -1,0 +1,240 @@
+:root {
+    --color-configmap: #007bff;
+    --color-secret: #28a745;
+    --color-namespace: #17a2b8;
+    --color-service: #6f42c1;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f8f9fa;
+}
+
+.navbar-brand {
+    font-weight: 700;
+    font-size: 1.5rem;
+}
+
+.sidebar-card {
+    box-shadow: 0 2px 4px rgba(0,0,0,.1);
+    border: none;
+    border-radius: 10px;
+}
+
+.sidebar-card .card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #eee;
+    font-weight: 600;
+}
+
+/* Навигация в сайдбаре */
+#config-nav .list-group-item {
+    border: none;
+    border-radius: 0;
+    padding: 12px 15px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+#config-nav .list-group-item:hover {
+    background-color: #f8f9fa;
+    padding-left: 20px;
+}
+
+#config-nav .list-group-item.active {
+    background-color: #007bff;
+    border-color: #007bff;
+    color: white;
+}
+
+#config-nav .list-group-item.active i {
+    color: white;
+}
+
+/* Секции конфигурации */
+.config-section {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Таблицы конфигурации */
+.config-table tr {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.config-table tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Badge для типов ресурсов */
+.resource-badge {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    border-radius: 10px;
+}
+
+.badge-configmap { background-color: #e7f3ff; color: var(--color-configmap); }
+.badge-secret { background-color: #d4edda; color: var(--color-secret); }
+.badge-namespace { background-color: #d1ecf1; color: var(--color-namespace); }
+.badge-service { background-color: #e6e6ff; color: var(--color-service); }
+
+/* Контейнеры для данных конфигурации */
+.config-data-container {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    padding: 15px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.config-data-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+}
+
+.config-data-item:last-child {
+    border-bottom: none;
+}
+
+.config-data-key {
+    font-weight: 600;
+    color: #495057;
+    min-width: 200px;
+}
+
+.config-data-value {
+    flex-grow: 1;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.9rem;
+    color: #6c757d;
+    word-break: break-all;
+}
+
+/* YAML просмотрщик */
+.yaml-pre {
+    background-color: #f5f5f5;
+    padding: 15px;
+    border-radius: 5px;
+    border-left: 4px solid #007bff;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.85rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.config-pre {
+    background-color: #f5f5f5;
+    padding: 15px;
+    border-radius: 5px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.85rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Стили для секретов */
+.secret-value {
+    font-family: 'Consolas', 'Monaco', monospace;
+    background-color: #fff3cd;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.8rem;
+}
+
+.secret-value.hidden {
+    color: #6c757d;
+    background-color: #e9ecef;
+}
+
+/* Анимации */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .config-data-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .config-data-key {
+        min-width: auto;
+        margin-bottom: 5px;
+    }
+    
+    .sidebar-card {
+        margin-bottom: 20px;
+    }
+}
+
+/* Уведомления */
+.toast-alert {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 300px;
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Кнопки действий */
+.btn-action {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 2px;
+}
+
+/* Формы ввода */
+.data-entry-row {
+    transition: all 0.3s ease;
+}
+
+.data-entry-row:hover {
+    background-color: #f8f9fa;
+}
+
+/* Карточки RBAC */
+.rbac-card {
+    height: 100%;
+    transition: transform 0.3s ease;
+}
+
+.rbac-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,.1);
+}
+
+/* Поля для лейблов и аннотаций */
+.label-item {
+    display: inline-block;
+    background-color: #e9ecef;
+    color: #495057;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    margin: 2px;
+}

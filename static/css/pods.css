@@ -1,0 +1,212 @@
+:root {
+    --color-running: #28a745;
+    --color-pending: #ffc107;
+    --color-failed: #dc3545;
+    --color-succeeded: #17a2b8;
+    --color-default: #6c757d;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f8f9fa;
+}
+
+.navbar-brand {
+    font-weight: 700;
+    font-size: 1.5rem;
+}
+
+.sidebar-card {
+    box-shadow: 0 2px 4px rgba(0,0,0,.1);
+    border: none;
+    border-radius: 10px;
+}
+
+.sidebar-card .card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #eee;
+    font-weight: 600;
+}
+
+.stat-card {
+    border: none;
+    border-radius: 10px;
+    transition: transform 0.2s;
+    cursor: pointer;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+
+.status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-dot.running { background-color: var(--color-running); }
+.status-dot.pending { background-color: var(--color-pending); }
+.status-dot.failed { background-color: var(--color-failed); }
+.status-dot.succeeded { background-color: var(--color-succeeded); }
+
+/* Стили для строк таблицы */
+.table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Badge статусов */
+.badge-status {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-running { background-color: #d4edda; color: #155724; }
+.badge-pending { background-color: #fff3cd; color: #856404; }
+.badge-failed { background-color: #f8d7da; color: #721c24; }
+.badge-succeeded { background-color: #d1ecf1; color: #0c5460; }
+
+/* Кнопки действий */
+.btn-action {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 2px;
+}
+
+.btn-action-sm {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8rem;
+}
+
+/* Контейнер для логов */
+.logs-container {
+    background-color: #1e1e1e;
+    border-radius: 5px;
+    padding: 15px;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.logs-pre {
+    color: #d4d4d4;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.9rem;
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* YAML просмотрщик */
+.yaml-pre {
+    background-color: #f5f5f5;
+    padding: 15px;
+    border-radius: 5px;
+    border-left: 4px solid #007bff;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.85rem;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.yaml-editor {
+    width: 100%;
+    min-height: 400px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    padding: 15px;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    font-size: 0.85rem;
+}
+
+/* Контейнер для лейблов */
+.labels-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.label-badge {
+    background-color: #e9ecef;
+    color: #495057;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* Спиннер */
+.spinner-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255,255,255,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.85rem;
+    }
+    
+    .btn-action {
+        width: 28px;
+        height: 28px;
+        font-size: 0.8rem;
+    }
+    
+    .stat-card h5 {
+        font-size: 1.1rem;
+    }
+}
+
+/* Анимации */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+/* Подсветка для поиска */
+.highlight {
+    background-color: #fff3cd;
+    padding: 1px 3px;
+    border-radius: 3px;
+}
+
+/* Прогресс бар для памяти */
+.memory-bar {
+    height: 6px;
+    background-color: #e9ecef;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 4px;
+}
+
+.memory-fill {
+    height: 100%;
+    background-color: #007bff;
+    transition: width 0.3s ease;
+}

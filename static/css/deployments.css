@@ -1,0 +1,264 @@
+:root {
+    --color-ready: #28a745;
+    --color-not-ready: #dc3545;
+    --color-progressing: #ffc107;
+    --color-available: #17a2b8;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f8f9fa;
+}
+
+.navbar-brand {
+    font-weight: 700;
+    font-size: 1.5rem;
+}
+
+.sidebar-card {
+    box-shadow: 0 2px 4px rgba(0,0,0,.1);
+    border: none;
+    border-radius: 10px;
+}
+
+.sidebar-card .card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #eee;
+    font-weight: 600;
+}
+
+.stat-card {
+    border: none;
+    border-radius: 10px;
+    transition: transform 0.2s;
+    cursor: pointer;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+
+.status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-dot.ready { background-color: var(--color-ready); }
+.status-dot.not-ready { background-color: var(--color-not-ready); }
+.status-dot.progressing { background-color: var(--color-progressing); }
+
+/* Стили для строк таблицы */
+.table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Выделенные строки */
+.table tbody tr.selected {
+    background-color: #e7f3ff;
+}
+
+/* Badge статусов */
+.badge-status {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-ready { background-color: #d4edda; color: #155724; }
+.badge-not-ready { background-color: #f8d7da; color: #721c24; }
+.badge-progressing { background-color: #fff3cd; color: #856404; }
+
+/* Кнопки действий */
+.btn-action {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 2px;
+}
+
+.btn-action-sm {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8rem;
+}
+
+/* Прогресс бар для реплик */
+.replica-progress {
+    height: 20px;
+    background-color: #e9ecef;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 5px;
+}
+
+.replica-progress .progress-bar {
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+/* YAML просмотрщик */
+.yaml-pre {
+    background-color: #f5f5f5;
+    padding: 15px;
+    border-radius: 5px;
+    border-left: 4px solid #007bff;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.85rem;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.yaml-editor {
+    width: 100%;
+    min-height: 400px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    padding: 15px;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    font-size: 0.85rem;
+}
+
+/* Контейнер для лейблов */
+.labels-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.label-badge {
+    background-color: #e9ecef;
+    color: #495057;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* Список подов */
+.pods-management-table {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.pod-row {
+    border-left: 4px solid transparent;
+}
+
+.pod-row.running { border-left-color: #28a745; }
+.pod-row.pending { border-left-color: #ffc107; }
+.pod-row.failed { border-left-color: #dc3545; }
+.pod-row.succeeded { border-left-color: #17a2b8; }
+
+.pod-status-icon {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 8px;
+}
+
+.pod-status-icon.running { background-color: #28a745; }
+.pod-status-icon.pending { background-color: #ffc107; }
+.pod-status-icon.failed { background-color: #dc3545; }
+.pod-status-icon.succeeded { background-color: #17a2b8; }
+
+/* Slider */
+.slider.slider-horizontal {
+    width: 100%;
+    margin: 10px 0;
+}
+
+.slider-track {
+    background: #e9ecef;
+}
+
+.slider-selection {
+    background: #007bff;
+}
+
+.slider-handle {
+    background: #007bff;
+}
+
+/* Progress bars in stats */
+.progress {
+    height: 8px;
+    margin: 5px 0;
+}
+
+/* Анимации */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.85rem;
+    }
+    
+    .btn-action {
+        width: 28px;
+        height: 28px;
+        font-size: 0.8rem;
+    }
+    
+    .stat-card h5 {
+        font-size: 1.1rem;
+    }
+}
+
+/* Уведомления */
+.toast-alert {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 300px;
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Чекбоксы */
+.form-check-input:checked {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+/* Подсветка для поиска */
+.highlight {
+    background-color: #fff3cd;
+    padding: 1px 3px;
+    border-radius: 3px;
+}
+
+/* Модальные окна */
+.modal-xxl {
+    max-width: 90%;
+}

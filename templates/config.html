@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kubernetes Manager - Configuration</title>
+    <link rel="stylesheet" href="/static/css/config.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Навигация -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/ui/dashboard">
+                <i class="fas fa-kubernetes me-2"></i>K8s Manager
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ui/dashboard">
+                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ui/applications">
+                            <i class="fas fa-th-large me-1"></i>Applications
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ui/pods">
+                            <i class="fas fa-cube me-1"></i>Pods
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ui/deployments">
+                            <i class="fas fa-layer-group me-1"></i>Deployments
+                        </a>
+                    </li>
+                    <li class="nav-item active">
+                        <a class="nav-link active" href="/ui/config">
+                            <i class="fas fa-cogs me-1"></i>Configuration
+                        </a>
+                    </li>
+                </ul>
+                <div class="navbar-text">
+                    <span class="badge bg-success me-2">
+                        <i class="fas fa-plug"></i> Connected
+                    </span>
+                    <span id="current-namespace" class="badge bg-info">market</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Основной контент -->
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <!-- Боковая панель навигации -->
+            <div class="col-md-3 col-lg-2">
+                <div class="card sidebar-card">
+                    <div class="card-header">
+                        <h6><i class="fas fa-sliders-h me-2"></i>Configuration Resources</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="list-group list-group-flush" id="config-nav">
+                            <button class="list-group-item list-group-item-action active" onclick="showSection('configmaps')">
+                                <i class="fas fa-map me-2"></i>ConfigMaps
+                            </button>
+                            <button class="list-group-item list-group-item-action" onclick="showSection('secrets')">
+                                <i class="fas fa-key me-2"></i>Secrets
+                            </button>
+                            <button class="list-group-item list-group-item-action" onclick="showSection('namespaces')">
+                                <i class="fas fa-layer-group me-2"></i>Namespaces
+                            </button>
+                            <button class="list-group-item list-group-item-action" onclick="showSection('services')">
+                                <i class="fas fa-network-wired me-2"></i>Services
+                            </button>
+                            <button class="list-group-item list-group-item-action" onclick="showSection('ingress')">
+                                <i class="fas fa-globe me-2"></i>Ingress
+                            </button>
+                            <button class="list-group-item list-group-item-action" onclick="showSection('pvcs')">
+                                <i class="fas fa-database me-2"></i>Persistent Volumes
+                            </button>
+                            <button class="list-group-item list-group-item-action" onclick="showSection('rbac')">
+                                <i class="fas fa-user-shield me-2"></i>RBAC
+                            </button>
+                            <button class="list-group-item list-group-item-action" onclick="showSection('cluster-info')">
+                                <i class="fas fa-info-circle me-2"></i>Cluster Info
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Быстрые действия -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h6><i class="fas fa-bolt me-2"></i>Quick Actions</h6>
+                    </div>
+                    <div class="card-body">
+                        <button class="btn btn-sm btn-outline-primary w-100 mb-2" onclick="createConfigMap()">
+                            <i class="fas fa-plus me-1"></i>New ConfigMap
+                        </button>
+                        <button class="btn btn-sm btn-outline-success w-100 mb-2" onclick="createSecret()">
+                            <i class="fas fa-plus me-1"></i>New Secret
+                        </button>
+                        <button class="btn btn-sm btn-outline-info w-100" onclick="createNamespace()">
+                            <i class="fas fa-plus me-1"></i>New Namespace
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Информация о namespace -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h6><i class="fas fa-info-circle me-2"></i>Namespace Info</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <small class="text-muted">Selected:</small>
+                            <div class="fw-bold" id="selected-namespace">market</div>
+                        </div>
+                        <div class="mb-2">
+                            <small class="text-muted">ConfigMaps:</small>
+                            <div id="namespace-cm-count">0</div>
+                        </div>
+                        <div class="mb-2">
+                            <small class="text-muted">Secrets:</small>
+                            <div id="namespace-secrets-count">0</div>
+                        </div>
+                        <div>
+                            <small class="text-muted">Services:</small>
+                            <div id="namespace-services-count">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Основная область конфигурации -->
+            <div class="col-md-9 col-lg-10">
+                <!-- Заголовок и фильтры -->
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h2 id="section-title">
+                            <i class="fas fa-map me-2"></i>ConfigMaps
+                        </h2>
+                        <p class="text-muted mb-0" id="section-description">
+                            Manage configuration data as key-value pairs
+                        </p>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-outline-primary" onclick="refreshSection()">
+                            <i class="fas fa-sync-alt me-1"></i>Refresh
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="exportConfig()">
+                            <i class="fas fa-download me-1"></i>Export
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Выбор namespace -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-md-3">
+                                <label class="form-label">Namespace</label>
+                                <select class="form-select" id="namespace-select" onchange="changeNamespace()">
+                                    <!-- Namespaces will be loaded here -->
+                                </select>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label">Search</label>
+                                <input type="text" class="form-control" id="config-search" 
+                                       placeholder="Search configuration..." oninput="filterConfig()">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Quick Filter</label>
+                                <div class="btn-group w-100">
+                                    <button class="btn btn-outline-secondary" onclick="filterByType('all')">All</button>
+                                    <button class="btn btn-outline-primary" onclick="filterByType('configmap')">CM</button>
+                                    <button class="btn btn-outline-success" onclick="filterByType('secret')">Secret</button>
+                                    <button class="btn btn-outline-info" onclick="filterByType('service')">Service</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Секции конфигурации (будут переключаться) -->
+                
+                <!-- ConfigMaps Section -->
+                <div id="configmaps-section" class="config-section">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">ConfigMaps in <span class="badge bg-primary" id="cm-namespace">market</span></h5>
+                            <button class="btn btn-sm btn-primary" onclick="createConfigMap()">
+                                <i class="fas fa-plus me-1"></i>Create ConfigMap
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Namespace</th>
+                                            <th>Data Keys</th>
+                                            <th>Age</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="configmaps-table">
+                                        <!-- ConfigMaps will be loaded here -->
+                                        <tr>
+                                            <td colspan="5" class="text-center py-5">
+                                                <div class="spinner-border text-primary" role="status">
+                                                    <span class="visually-hidden">Loading...</span>
+                                                </div>
+                                                <p class="mt-2 text-muted">Loading ConfigMaps...</p>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Secrets Section -->
+                <div id="secrets-section" class="config-section" style="display: none;">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Secrets in <span class="badge bg-success" id="secrets-namespace">market</span></h5>
+                            <button class="btn btn-sm btn-success" onclick="createSecret()">
+                                <i class="fas fa-plus me-1"></i>Create Secret
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Namespace</th>
+                                            <th>Type</th>
+                                            <th>Data Keys</th>
+                                            <th>Age</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="secrets-table">
+                                        <!-- Secrets will be loaded here -->
+                                        <tr>
+                                            <td colspan="6" class="text-center py-5">
+                                                <div class="spinner-border text-primary" role="status">
+                                                    <span class="visually-hidden">Loading...</span>
+                                                </div>
+                                                <p class="mt-2 text-muted">Loading Secrets...</p>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Namespaces Section -->
+                <div id="namespaces-section" class="config-section" style="display: none;">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Namespaces</h5>
+                            <button class="btn btn-sm btn-info" onclick="createNamespace()">
+                                <i class="fas fa-plus me-1"></i>Create Namespace
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Status</th>
+                                            <th>Pods</th>
+                                            <th>Services</th>
+                                            <th>ConfigMaps</th>
+                                            <th>Age</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="namespaces-table">
+                                        <!-- Namespaces will be loaded here -->
+                                        <tr>
+                                            <td colspan="7" class="text-center py-5">
+                                                <div class="spinner-border text-primary" role="status">
+                                                    <span class="visually-hidden">Loading...</span>
+                                                </div>
+                                                <p class="mt-2 text-muted">Loading Namespaces...</p>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Services Section -->
+                <div id="services-section" class="config-section" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Services in <span class="badge bg-info" id="services-namespace">market</span></h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Namespace</th>
+                                            <th>Type</th>
+                                            <th>Cluster IP</th>
+                                            <th>Ports</th>
+                                            <th>Age</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="services-table">
+                                        <!-- Services will be loaded here -->
+                                        <tr>
+                                            <td colspan="7" class="text-center py-5">
+                                                <div class="spinner-border text-primary" role="status">
+                                                    <span class="visually-hidden">Loading...</span>
+                                                </div>
+                                                <p class="mt-2 text-muted">Loading Services...</p>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ingress Section -->
+                <div id="ingress-section" class="config-section" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Ingress Rules</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Ingress resources manage external access to services in a cluster.
+                            </div>
+                            <div id="ingress-content">
+                                <!-- Ingress will be loaded here -->
+                                <div class="text-center py-5">
+                                    <div class="spinner-border text-primary" role="status"></div>
+                                    <p class="mt-2 text-muted">Loading Ingress rules...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Persistent Volumes Section -->
+                <div id="pvcs-section" class="config-section" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Persistent Volume Claims</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="pvcs-content">
+                                <!-- PVCs will be loaded here -->
+                                <div class="text-center py-5">
+                                    <div class="spinner-border text-primary" role="status"></div>
+                                    <p class="mt-2 text-muted">Loading Persistent Volumes...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RBAC Section -->
+                <div id="rbac-section" class="config-section" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">RBAC (Role-Based Access Control)</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6 class="mb-0"><i class="fas fa-users me-2"></i>Service Accounts</h6>
+                                        </div>
+                                        <div class="card-body" id="service-accounts">
+                                            <!-- Service Accounts will be loaded here -->
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6 class="mb-0"><i class="fas fa-user-tag me-2"></i>Roles</h6>
+                                        </div>
+                                        <div class="card-body" id="roles-list">
+                                            <!-- Roles will be loaded here -->
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6 class="mb-0"><i class="fas fa-user-shield me-2"></i>Cluster Roles</h6>
+                                        </div>
+                                        <div class="card-body" id="cluster-roles">
+                                            <!-- Cluster Roles will be loaded here -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cluster Info Section -->
+                <div id="cluster-info-section" class="config-section" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Cluster Information</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <table class="table table-sm">
+                                        <tr><th>Kubernetes Version:</th><td id="cluster-version">Loading...</td></tr>
+                                        <tr><th>Container Runtime:</th><td id="cluster-runtime">Loading...</td></tr>
+                                        <tr><th>Platform:</th><td id="cluster-platform">Loading...</td></tr>
+                                        <tr><th>API Server:</th><td id="cluster-api">Loading...</td></tr>
+                                    </table>
+                                </div>
+                                <div class="col-md-6">
+                                    <table class="table table-sm">
+                                        <tr><th>Nodes Count:</th><td id="cluster-nodes">Loading...</td></tr>
+                                        <tr><th>Total Pods:</th><td id="cluster-pods">Loading...</td></tr>
+                                        <tr><th>Total Namespaces:</th><td id="cluster-namespaces">Loading...</td></tr>
+                                        <tr><th>Cluster Health:</th><td id="cluster-health">Loading...</td></tr>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="mt-4">
+                                <h6>Cluster Configuration</h6>
+                                <pre id="cluster-config" class="config-pre">Loading cluster configuration...</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для создания ConfigMap -->
+    <div class="modal fade" id="createConfigMapModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-map me-2"></i>Create ConfigMap
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="create-configmap-form">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">ConfigMap Name *</label>
+                                    <input type="text" class="form-control" id="cm-name" required 
+                                           placeholder="my-config">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Namespace *</label>
+                                    <select class="form-select" id="cm-namespace" required>
+                                        <!-- Namespaces will be loaded -->
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Configuration Data (key=value)</label>
+                            <div id="cm-data-entries">
+                                <div class="row mb-2">
+                                    <div class="col-5">
+                                        <input type="text" class="form-control" placeholder="key">
+                                    </div>
+                                    <div class="col-6">
+                                        <input type="text" class="form-control" placeholder="value">
+                                    </div>
+                                    <div class="col-1">
+                                        <button type="button" class="btn btn-sm btn-danger" onclick="removeDataEntry(this)">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary mt-2" onclick="addDataEntry()">
+                                <i class="fas fa-plus me-1"></i>Add Key-Value Pair
+                            </button>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Labels (optional)</label>
+                            <textarea class="form-control" id="cm-labels" rows="2" 
+                                      placeholder="app=myapp&#10;tier=backend"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="saveConfigMap()">Create ConfigMap</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для создания Secret -->
+    <div class="modal fade" id="createSecretModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-key me-2"></i>Create Secret
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="create-secret-form">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Secret Name *</label>
+                                    <input type="text" class="form-control" id="secret-name" required 
+                                           placeholder="my-secret">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Namespace *</label>
+                                    <select class="form-select" id="secret-namespace" required>
+                                        <!-- Namespaces will be loaded -->
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Secret Type</label>
+                            <select class="form-select" id="secret-type">
+                                <option value="Opaque">Opaque (generic)</option>
+                                <option value="kubernetes.io/tls">TLS</option>
+                                <option value="kubernetes.io/dockerconfigjson">Docker Config</option>
+                                <option value="kubernetes.io/basic-auth">Basic Auth</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Secret Data (key=value, values will be base64 encoded)</label>
+                            <div id="secret-data-entries">
+                                <div class="row mb-2">
+                                    <div class="col-5">
+                                        <input type="text" class="form-control" placeholder="key">
+                                    </div>
+                                    <div class="col-6">
+                                        <input type="password" class="form-control" placeholder="value">
+                                    </div>
+                                    <div class="col-1">
+                                        <button type="button" class="btn btn-sm btn-danger" onclick="removeDataEntry(this)">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary mt-2" onclick="addSecretEntry()">
+                                <i class="fas fa-plus me-1"></i>Add Key-Value Pair
+                            </button>
+                        </div>
+                        
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="show-secret-values">
+                            <label class="form-check-label" for="show-secret-values">
+                                Show secret values (for debugging)
+                            </label>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" onclick="saveSecret()">Create Secret</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для создания Namespace -->
+    <div class="modal fade" id="createNamespaceModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-layer-group me-2"></i>Create Namespace
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="create-namespace-form">
+                        <div class="mb-3">
+                            <label class="form-label">Namespace Name *</label>
+                            <input type="text" class="form-control" id="namespace-name" required 
+                                   placeholder="my-namespace">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Labels (optional)</label>
+                            <textarea class="form-control" id="namespace-labels" rows="2" 
+                                      placeholder="environment=production&#10;team=backend"></textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Annotations (optional)</label>
+                            <textarea class="form-control" id="namespace-annotations" rows="2" 
+                                      placeholder="description=Production namespace"></textarea>
+                        </div>
+                        
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Namespaces provide a scope for names and are a way to divide cluster resources.
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-info" onclick="saveNamespace()">Create Namespace</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для просмотра ConfigMap -->
+    <div class="modal fade" id="viewConfigMapModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-map me-2"></i>ConfigMap: <span id="view-cm-name"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <table class="table table-sm">
+                            <tr><th>Namespace:</th><td id="view-cm-namespace"></td></tr>
+                            <tr><th>Created:</th><td id="view-cm-created"></td></tr>
+                            <tr><th>Labels:</th><td id="view-cm-labels"></td></tr>
+                        </table>
+                    </div>
+                    
+                    <h6>Configuration Data</h6>
+                    <div id="view-cm-data" class="config-data-container">
+                        <!-- ConfigMap data will be displayed here -->
+                    </div>
+                    
+                    <div class="mt-3">
+                        <h6>YAML Representation</h6>
+                        <pre id="view-cm-yaml" class="yaml-pre"></pre>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="editConfigMap()">Edit</button>
+                    <button type="button" class="btn btn-danger" onclick="deleteConfigMap()">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для просмотра Secret -->
+    <div class="modal fade" id="viewSecretModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-key me-2"></i>Secret: <span id="view-secret-name"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Secret values are base64 encoded. Handle with care!
+                    </div>
+                    
+                    <div class="mb-3">
+                        <table class="table table-sm">
+                            <tr><th>Namespace:</th><td id="view-secret-namespace"></td></tr>
+                            <tr><th>Type:</th><td id="view-secret-type"></td></tr>
+                            <tr><th>Created:</th><td id="view-secret-created"></td></tr>
+                        </table>
+                    </div>
+                    
+                    <h6>Secret Data</h6>
+                    <div id="view-secret-data" class="config-data-container">
+                        <!-- Secret data will be displayed here -->
+                    </div>
+                    
+                    <div class="mt-3">
+                        <h6>YAML Representation</h6>
+                        <pre id="view-secret-yaml" class="yaml-pre"></pre>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-success" onclick="editSecret()">Edit</button>
+                    <button type="button" class="btn btn-danger" onclick="deleteSecret()">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Скрипты -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/config.js"></script>
+</body>
+</html>

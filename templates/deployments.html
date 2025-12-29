@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kubernetes Manager - Deployments</title>
+    <link rel="stylesheet" href="/static/css/deployments.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-slider/11.0.2/css/bootstrap-slider.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Навигация -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/ui/dashboard">
+                <i class="fas fa-kubernetes me-2"></i>K8s Manager
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ui/dashboard">
+                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ui/applications">
+                            <i class="fas fa-th-large me-1"></i>Applications
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ui/pods">
+                            <i class="fas fa-cube me-1"></i>Pods
+                        </a>
+                    </li>
+                    <li class="nav-item active">
+                        <a class="nav-link active" href="/ui/deployments">
+                            <i class="fas fa-layer-group me-1"></i>Deployments
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ui/config">
+                            <i class="fas fa-cogs me-1"></i>Configuration
+                        </a>
+                    </li>
+                </ul>
+                <div class="navbar-text">
+                    <span class="badge bg-success me-2">
+                        <i class="fas fa-plug"></i> Connected
+                    </span>
+                    <span id="current-namespace" class="badge bg-info">market</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Основной контент -->
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <!-- Боковая панель фильтров -->
+            <div class="col-md-3 col-lg-2">
+                <div class="card sidebar-card">
+                    <div class="card-header">
+                        <h6><i class="fas fa-filter me-2"></i>Filters</h6>
+                    </div>
+                    <div class="card-body">
+                        <!-- Выбор namespace -->
+                        <div class="mb-3">
+                            <label class="form-label"><i class="fas fa-layer-group me-1"></i>Namespace</label>
+                            <select id="namespace-select" class="form-select">
+                                <option value="market" selected>market</option>
+                                <option value="default">default</option>
+                                <option value="kube-system">kube-system</option>
+                                <option value="all">All Namespaces</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Статус деплойментов -->
+                        <div class="mb-3">
+                            <label class="form-label"><i class="fas fa-check-circle me-1"></i>Status</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="ready" id="status-ready" checked>
+                                <label class="form-check-label" for="status-ready">
+                                    <span class="status-dot ready"></span> Ready
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="not-ready" id="status-not-ready" checked>
+                                <label class="form-check-label" for="status-not-ready">
+                                    <span class="status-dot not-ready"></span> Not Ready
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="progressing" id="status-progressing" checked>
+                                <label class="form-check-label" for="status-progressing">
+                                    <span class="status-dot progressing"></span> Progressing
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Поиск -->
+                        <div class="mb-3">
+                            <label class="form-label"><i class="fas fa-search me-1"></i>Search</label>
+                            <input type="text" id="search-deployments" class="form-control" placeholder="Search deployments...">
+                        </div>
+                        
+                        <!-- Быстрые действия -->
+                        <div class="d-grid gap-2">
+                            <button id="refresh-btn" class="btn btn-outline-primary">
+                                <i class="fas fa-sync-alt me-2"></i>Refresh
+                            </button>
+                            <button id="create-deployment-btn" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createModal">
+                                <i class="fas fa-plus me-2"></i>Create Deployment
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Статистика -->
+                    <div class="card-footer">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            <span id="stats-count">0</span> deployments
+                        </small>
+                    </div>
+                </div>
+                
+                <!-- Управление репликами -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h6><i class="fas fa-sliders-h me-2"></i>Quick Scale</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Scale Selected</label>
+                            <div class="input-group mb-2">
+                                <input type="number" class="form-control" id="quick-scale-value" value="2" min="0" max="20">
+                                <button class="btn btn-outline-primary" onclick="quickScaleSelected()">
+                                    <i class="fas fa-play"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="btn-group w-100">
+                            <button class="btn btn-sm btn-outline-success" onclick="scaleAllUp()">
+                                <i class="fas fa-plus"></i> +1 All
+                            </button>
+                            <button class="btn btn-sm btn-outline-warning" onclick="scaleAllDown()">
+                                <i class="fas fa-minus"></i> -1 All
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Основная область с деплойментами -->
+            <div class="col-md-9 col-lg-10">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2>
+                        <i class="fas fa-layer-group me-2"></i>Kubernetes Deployments
+                    </h2>
+                    <div class="btn-group">
+                        <button class="btn btn-outline-secondary" onclick="exportToCSV()">
+                            <i class="fas fa-download me-1"></i>Export
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="toggleViewMode()">
+                            <i class="fas fa-th me-1"></i>Grid
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Статус бар -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-success bg-opacity-10">
+                            <div class="card-body">
+                                <h5><i class="fas fa-check-circle text-success me-2"></i><span id="ready-count">0</span></h5>
+                                <small class="text-muted">Ready</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-primary bg-opacity-10">
+                            <div class="card-body">
+                                <h5><i class="fas fa-server text-primary me-2"></i><span id="replicas-count">0</span></h5>
+                                <small class="text-muted">Total Replicas</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-warning bg-opacity-10">
+                            <div class="card-body">
+                                <h5><i class="fas fa-clock text-warning me-2"></i><span id="updating-count">0</span></h5>
+                                <small class="text-muted">Updating</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-info bg-opacity-10">
+                            <div class="card-body">
+                                <h5><i class="fas fa-memory text-info me-2"></i><span id="available-count">0</span></h5>
+                                <small class="text-muted">Available</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Таблица с деплойментами -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-list me-2"></i>Deployment List</h5>
+                            <div class="spinner-border spinner-border-sm text-primary" id="loading-spinner" style="display: none;"></div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0" id="deployments-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 30px;">
+                                            <input type="checkbox" id="select-all" onclick="toggleSelectAll()">
+                                        </th>
+                                        <th>Name</th>
+                                        <th>Namespace</th>
+                                        <th>Status</th>
+                                        <th>Ready</th>
+                                        <th>Replicas</th>
+                                        <th>Strategy</th>
+                                        <th>Age</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="deployments-table-body">
+                                    <!-- Deployments will be loaded here -->
+                                    <tr>
+                                        <td colspan="9" class="text-center py-5">
+                                            <div class="spinner-border text-primary" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="mt-2 text-muted">Loading deployments...</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted" id="last-updated">Last updated: --</small>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadDeployments()">
+                                    <i class="fas fa-sync-alt me-1"></i>Refresh
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="scaleSelectedDeployments()">
+                                    <i class="fas fa-expand-alt me-1"></i>Scale Selected
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для создания деплоймента -->
+    <div class="modal fade" id="createModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-plus-circle me-2"></i>Create New Deployment
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="create-deployment-form">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Deployment Name *</label>
+                                    <input type="text" class="form-control" id="deployment-name" required 
+                                           placeholder="my-app-deployment">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Namespace *</label>
+                                    <select class="form-select" id="deployment-namespace" required>
+                                        <option value="market" selected>market</option>
+                                        <option value="default">default</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Docker Image *</label>
+                            <input type="text" class="form-control" id="deployment-image" required 
+                                   placeholder="nginx:latest">
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Replicas</label>
+                                    <input type="number" class="form-control" id="deployment-replicas" 
+                                           value="2" min="1" max="20">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Port</label>
+                                    <input type="number" class="form-control" id="deployment-port" 
+                                           value="80" min="1" max="65535">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Strategy</label>
+                                    <select class="form-select" id="deployment-strategy">
+                                        <option value="RollingUpdate">Rolling Update</option>
+                                        <option value="Recreate">Recreate</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Labels (key=value, one per line)</label>
+                            <textarea class="form-control" id="deployment-labels" rows="3" 
+                                      placeholder="app=myapp&#10;tier=frontend"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="createDeployment()">Create</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для масштабирования -->
+    <div class="modal fade" id="scaleModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-expand-alt me-2"></i>Scale Deployment
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Deployment: <strong id="scale-deployment-name"></strong></p>
+                    <p>Namespace: <span class="badge bg-secondary" id="scale-namespace"></span></p>
+                    <p>Current: <span class="badge bg-info" id="scale-current">1</span></p>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Number of replicas:</label>
+                        <input type="range" class="form-range" id="replicas-slider" min="0" max="20" step="1">
+                        <div class="d-flex justify-content-between">
+                            <span>0</span>
+                            <span id="replicas-value" class="fw-bold">1</span>
+                            <span>20</span>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Or enter manually:</label>
+                        <input type="number" class="form-control" id="replicas-input" 
+                               min="0" max="20" value="1">
+                    </div>
+                    
+                    <div class="btn-group w-100 mb-3">
+                        <button class="btn btn-outline-success" onclick="adjustReplicas(1)">
+                            <i class="fas fa-plus"></i> Add 1 Pod
+                        </button>
+                        <button class="btn btn-outline-warning" onclick="adjustReplicas(-1)">
+                            <i class="fas fa-minus"></i> Remove 1 Pod
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="scaleDeployment()">Scale</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для массового масштабирования -->
+    <div class="modal fade" id="bulkScaleModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-expand-alt me-2"></i>Scale Multiple Deployments
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Selected deployments: <span id="selected-count">0</span></p>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Scale to replicas:</label>
+                        <input type="number" class="form-control" id="bulk-replicas" 
+                               min="0" max="20" value="2">
+                    </div>
+                    
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="scale-proportionally">
+                        <label class="form-check-label" for="scale-proportionally">
+                            Scale proportionally (keep current ratios)
+                        </label>
+                    </div>
+                    
+                    <div class="mt-3" id="bulk-scale-list" style="max-height: 200px; overflow-y: auto;">
+                        <!-- List of selected deployments will appear here -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="applyBulkScale()">Apply to All</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для управления подами -->
+    <div class="modal fade" id="managePodsModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-cubes me-2"></i>
+                        Manage Pods: <span id="manage-pods-deployment"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-sliders-h me-2"></i>Scale Control</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">Current Replicas: <span class="badge bg-primary" id="current-replica-count">0</span></label>
+                                        <div class="input-group mb-2">
+                                            <input type="number" class="form-control" id="new-replica-count" min="0" max="20" value="2">
+                                            <button class="btn btn-primary" onclick="applyReplicaChange()">
+                                                Apply
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="btn-group w-100 mb-3">
+                                        <button class="btn btn-success" onclick="addPod()">
+                                            <i class="fas fa-plus me-1"></i>Add Pod
+                                        </button>
+                                        <button class="btn btn-warning" onclick="removePod()">
+                                            <i class="fas fa-minus me-1"></i>Remove Pod
+                                        </button>
+                                    </div>
+                                    
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        Changing replicas will create or delete pods automatically.
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="card mt-3">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Statistics</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-2">
+                                        <small>Total Pods:</small>
+                                        <div class="d-flex justify-content-between">
+                                            <span id="total-pods">0</span>
+                                            <span class="badge bg-primary" id="desired-pods">0 desired</span>
+                                        </div>
+                                    </div>
+                                    <div class="mb-2">
+                                        <small>Running:</small>
+                                        <div class="progress">
+                                            <div class="progress-bar bg-success" id="running-progress" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-2">
+                                        <small>Pending:</small>
+                                        <div class="progress">
+                                            <div class="progress-bar bg-warning" id="pending-progress" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-2">
+                                        <small>Failed:</small>
+                                        <div class="progress">
+                                            <div class="progress-bar bg-danger" id="failed-progress" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-8">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0"><i class="fas fa-cube me-2"></i>Pods List</h6>
+                                        <button class="btn btn-sm btn-outline-primary" onclick="refreshPodsList()">
+                                            <i class="fas fa-sync-alt"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Pod Name</th>
+                                                    <th>Status</th>
+                                                    <th>Ready</th>
+                                                    <th>Restarts</th>
+                                                    <th>Age</th>
+                                                    <th>Node</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="pods-management-body">
+                                                <!-- Pods will be loaded here -->
+                                                <tr>
+                                                    <td colspan="7" class="text-center py-3">
+                                                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                                                        <p class="mt-2 text-muted small">Loading pods...</p>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="card-footer">
+                                    <small class="text-muted">
+                                        Showing <span id="showing-pods">0</span> pods
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для рестарта -->
+    <div class="modal fade" id="restartModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-redo me-2"></i>Restart Deployment
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to restart deployment <strong id="restart-deployment-name"></strong>?</p>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        This will trigger a rolling restart of all pods in the deployment.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-warning" onclick="confirmRestart()">Restart</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для конфигурации -->
+    <div class="modal fade" id="configModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-code me-2"></i>
+                        YAML Config: <span id="config-deployment-name"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="btn-group">
+                            <button class="btn btn-outline-primary" onclick="copyYAML()">
+                                <i class="fas fa-copy me-1"></i>Copy
+                            </button>
+                            <button class="btn btn-outline-success" onclick="downloadYAML()">
+                                <i class="fas fa-download me-1"></i>Download
+                            </button>
+                            <button class="btn btn-outline-warning" onclick="editYAML()">
+                                <i class="fas fa-edit me-1"></i>Edit
+                            </button>
+                        </div>
+                    </div>
+                    <div class="config-container">
+                        <pre id="yaml-content" class="yaml-pre"></pre>
+                        <textarea id="yaml-editor" class="yaml-editor" style="display: none;"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="save-yaml-btn" style="display: none;" onclick="saveYAML()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для удаления -->
+    <div class="modal fade" id="deleteModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-trash me-2"></i>Delete Deployment
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete deployment <strong id="delete-deployment-name"></strong>?</p>
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        This action cannot be undone. All pods managed by this deployment will be terminated.
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="cascade-delete">
+                        <label class="form-check-label" for="cascade-delete">
+                            Delete associated pods and services
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Скрипты -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-slider/11.0.2/bootstrap-slider.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+    <script src="/static/js/deployments.js"></script>
+</body>
+</html>
