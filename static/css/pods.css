@@ -205,11 +205,35 @@ body {
     border-radius: 3px;
 }
 
-/* Графики */
+/* Графики - общие настройки */
 .chart-container {
     position: relative;
-    height: 200px;
     width: 100%;
+}
+
+.chart-wrapper {
+    position: relative;
+    width: 100%;
+    height: 150px;
+}
+
+/* График ресурсов */
+#resourceChart {
+    max-height: 150px;
+    width: 100% !important;
+}
+
+/* Детальные графики в модальном окне */
+#detailedCpuChart, #detailedMemoryChart {
+    max-height: 250px;
+    width: 100% !important;
+}
+
+/* Общие стили для всех графиков */
+canvas {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
 }
 
 /* Модальные окна для метрик */
@@ -257,6 +281,11 @@ body {
     padding: 1rem;
 }
 
+#cpuChart, #memoryChart {
+    max-height: 150px;
+    width: 100% !important;
+}
+
 /* Кнопки в таблице */
 .btn-group .btn-action {
     opacity: 0.8;
@@ -281,4 +310,114 @@ body {
 
 .table td .progress-bar {
     transition: width 0.3s ease;
+}
+
+/* Детали метрик в модальном окне */
+#cpu-details p, #memory-details p {
+    margin-bottom: 0.3rem;
+    font-size: 0.9rem;
+}
+
+/* Badge процентов в таблице */
+.table td .badge {
+    min-width: 50px;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+}
+
+/* Порядок колонок в таблице */
+#pods-table th:nth-child(6),
+#pods-table td:nth-child(6) {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+#pods-table th:nth-child(7),
+#pods-table td:nth-child(7) {
+    background-color: rgba(40, 167, 69, 0.05);
+}
+
+/* Для предотвращения растягивания */
+.card-body {
+    overflow: hidden;
+}
+
+/* Контейнер для графика в sidebar */
+.sidebar-card .card-body {
+    min-height: auto;
+}
+
+/* Обертка для графика ресурсов в sidebar */
+.sidebar-card .chart-wrapper {
+    height: 150px;
+    margin: 0 auto;
+}
+
+/* Улучшаем отображение легенды графика ресурсов */
+.sidebar-card .chartjs-legend {
+    margin-top: 10px;
+}
+
+/* Responsive fixes для графика */
+@media (max-width: 992px) {
+    .sidebar-card .chart-wrapper {
+        height: 120px;
+    }
+    
+    #resourceChart {
+        max-height: 120px;
+    }
+}
+
+/* Фикс для таблицы в мобильных устройствах */
+@media (max-width: 768px) {
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    #pods-table {
+        min-width: 800px;
+    }
+}
+
+/* Улучшаем видимость процентов в таблице */
+.table td:nth-child(6) .badge,
+.table td:nth-child(7) .badge {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    font-weight: 600;
+}
+
+/* Подсветка строк при наведении */
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+/* Улучшаем прогресс-бары в таблице */
+.table td .progress {
+    background-color: rgba(0, 0, 0, 0.05);
+    border-radius: 3px;
+}
+
+.table td .progress-bar {
+    border-radius: 3px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* Для графиков в основной области */
+#metrics-charts .chart-wrapper {
+    height: 150px;
+}
+
+/* Фикс для модальных окон с графиками */
+.modal-body .chart-wrapper {
+    height: 250px;
+}
+
+/* Улучшаем отображение tooltip в графиках */
+.chartjs-tooltip {
+    background-color: rgba(0, 0, 0, 0.8);
+    border-radius: 4px;
+    color: white;
+    padding: 8px;
+    font-size: 12px;
 }

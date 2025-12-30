@@ -6,18 +6,27 @@ let podMetrics = {};
 let resourceChart = null;
 let cpuChart = null;
 let memoryChart = null;
+let detailedCpuChart = null;
+let detailedMemoryChart = null;
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     loadPods();
     loadMetrics();
     setupEventListeners();
-    initCharts();
+    initResourceChart();
+    initMainCharts();
 });
 
-// Инициализация графиков
-function initCharts() {
+// Инициализация графика ресурсов
+function initResourceChart() {
     const ctx = document.getElementById('resourceChart').getContext('2d');
+    
+    // Уничтожаем старый график если есть
+    if (resourceChart) {
+        resourceChart.destroy();
+    }
+    
     resourceChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -25,7 +34,9 @@ function initCharts() {
             datasets: [{
                 data: [0, 0, 100],
                 backgroundColor: ['#007bff', '#28a745', '#e9ecef'],
-                borderWidth: 1
+                borderColor: '#fff',
+                borderWidth: 2,
+                hoverBorderWidth: 3
             }]
         },
         options: {
@@ -36,12 +47,38 @@ function initCharts() {
                     position: 'bottom',
                     labels: {
                         boxWidth: 12,
-                        padding: 10
+                        padding: 10,
+                        font: {
+                            size: 10
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            label += context.parsed.toFixed(1) + '%';
+                            return label;
+                        }
                     }
                 }
+            },
+            cutout: '65%',
+            animation: {
+                animateScale: true,
+                animateRotate: true
             }
         }
     });
+}
+
+// Инициализация основных графиков
+function initMainCharts() {
+    // Инициализация для cpuChart и memoryChart
+    // Они будут создаваться динамически в updateCharts()
 }
 
 // Настройка слушателей событий
@@ -192,7 +229,7 @@ function updateResourceChart(metrics) {
         totalMemory += metric.memory_raw || 0;
     });
     
-    // Для графика используем примерные лимиты (можно заменить реальными)
+    // Для графика используем примерные лимиты
     const cpuLimit = Math.max(totalCPU * 2, 1000); // Примерный лимит
     const memoryLimit = Math.max(totalMemory * 2, 100 * 1024 * 1024); // 100MB примерный лимит
     
@@ -202,14 +239,41 @@ function updateResourceChart(metrics) {
     resourceChart.data.datasets[0].data = [
         cpuPercent,
         memoryPercent,
-        100 - Math.max(cpuPercent, memoryPercent)
+        Math.max(0, 100 - cpuPercent - memoryPercent)
     ];
-    resourceChart.update();
+    
+    // Обновляем цвета в зависимости от нагрузки
+    resourceChart.data.datasets[0].backgroundColor = [
+        cpuPercent > 80 ? '#dc3545' : cpuPercent > 50 ? '#ffc107' : '#007bff',
+        memoryPercent > 80 ? '#dc3545' : memoryPercent > 50 ? '#ffc107' : '#28a745',
+        '#e9ecef'
+    ];
+    
+    resourceChart.update('none');
     
     document.getElementById('resource-info').innerHTML = `
-        CPU: ${cpuPercent.toFixed(1)}%<br>
-        Memory: ${memoryPercent.toFixed(1)}%
+        <div class="d-flex justify-content-around">
+            <div>
+                <strong class="text-primary">CPU:</strong><br>
+                ${cpuPercent.toFixed(1)}%
+            </div>
+            <div>
+                <strong class="text-success">Memory:</strong><br>
+                ${memoryPercent.toFixed(1)}%
+            </div>
+        </div>
     `;
+}
+
+// Функция обновления только графика ресурсов
+function refreshResourceChart() {
+    if (Object.keys(podMetrics).length === 0) {
+        loadMetrics();
+    } else {
+        const metrics = Object.values(podMetrics);
+        updateResourceChart(metrics);
+        showToast('Resource chart refreshed', 'info');
+    }
 }
 
 // Показать графики метрик
@@ -240,11 +304,14 @@ function updateCharts() {
             datasets: [{
                 label: 'CPU Usage (m)',
                 data: topPods.map(m => m.cpu_raw || 0),
-                backgroundColor: '#007bff'
+                backgroundColor: '#007bff',
+                borderColor: '#0056b3',
+                borderWidth: 1
             }]
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: { display: false }
             },
@@ -271,11 +338,14 @@ function updateCharts() {
             datasets: [{
                 label: 'Memory Usage',
                 data: topPods.map(m => (m.memory_raw || 0) / (1024 * 1024)), // Конвертируем в MB
-                backgroundColor: '#28a745'
+                backgroundColor: '#28a745',
+                borderColor: '#1e7e34',
+                borderWidth: 1
             }]
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: { display: false }
             },
@@ -322,6 +392,9 @@ function renderPodsTable(pods) {
         return;
     }
     
+    // Подсчитываем статистику для спиннера
+    document.getElementById('stats-count').textContent = filteredPods.length;
+    
     let html = '';
     filteredPods.forEach((pod, index) => {
         const podName = pod.name || `pod-${index}`;
@@ -333,8 +406,8 @@ function renderPodsTable(pods) {
         const metric = podMetrics[podName];
         const cpuUsage = metric ? metric.cpu_usage : 'N/A';
         const memoryUsage = metric ? metric.memory_usage : 'N/A';
-        const cpuPercent = metric ? metric.cpu_percent : 0;
-        const memoryPercent = metric ? metric.memory_percent : 0;
+        const cpuPercent = metric && metric.cpu_percent !== undefined ? metric.cpu_percent : 0;
+        const memoryPercent = metric && metric.memory_percent !== undefined ? metric.memory_percent : 0;
         const cpuRaw = metric ? metric.cpu_raw : 0;
         const memoryRaw = metric ? metric.memory_raw : 0;
         
@@ -369,6 +442,16 @@ function renderPodsTable(pods) {
                     </span>
                 </td>
                 <td>
+                    <span class="badge ${cpuPercent > 80 ? 'bg-danger' : cpuPercent > 50 ? 'bg-warning' : 'bg-info'}">
+                        ${cpuPercent}%
+                    </span>
+                </td>
+                <td>
+                    <span class="badge ${memoryPercent > 80 ? 'bg-danger' : memoryPercent > 50 ? 'bg-warning' : 'bg-info'}">
+                        ${memoryPercent}%
+                    </span>
+                </td>
+                <td>
                     <div class="d-flex align-items-center">
                         <span class="me-2">${cpuUsage}</span>
                         ${cpuPercent > 0 ? `
@@ -387,16 +470,6 @@ function renderPodsTable(pods) {
                             </div>
                         ` : ''}
                     </div>
-                </td>
-                <td>
-                    <span class="badge ${cpuPercent > 80 ? 'bg-danger' : cpuPercent > 50 ? 'bg-warning' : 'bg-info'}">
-                        ${cpuPercent}%
-                    </span>
-                </td>
-                <td>
-                    <span class="badge ${memoryPercent > 80 ? 'bg-danger' : memoryPercent > 50 ? 'bg-warning' : 'bg-info'}">
-                        ${memoryPercent}%
-                    </span>
                 </td>
                 <td>
                     <div class="btn-group" role="group">
@@ -475,7 +548,7 @@ function showDetailedMetrics(data) {
     // Обновляем CPU детали
     const cpuDetails = document.getElementById('cpu-details');
     cpuDetails.innerHTML = `
-        <p><strong>CPU Usage:</strong> ${data.total_cpu}</p>
+        <p><strong>Total CPU Usage:</strong> ${data.total_cpu || 'N/A'}</p>
         <p><strong>Containers:</strong> ${data.containers ? data.containers.length : 0}</p>
         <p><strong>Last Updated:</strong> ${data.timestamp ? new Date(data.timestamp).toLocaleString() : 'N/A'}</p>
     `;
@@ -483,10 +556,13 @@ function showDetailedMetrics(data) {
     // Обновляем Memory детали
     const memoryDetails = document.getElementById('memory-details');
     memoryDetails.innerHTML = `
-        <p><strong>Memory Usage:</strong> ${data.total_memory}</p>
+        <p><strong>Total Memory Usage:</strong> ${data.total_memory || 'N/A'}</p>
         <p><strong>Containers:</strong> ${data.containers ? data.containers.length : 0}</p>
         <p><strong>Last Updated:</strong> ${data.timestamp ? new Date(data.timestamp).toLocaleString() : 'N/A'}</p>
     `;
+    
+    // Создаем подробные графики
+    createDetailedCharts(data);
     
     // Обновляем таблицу контейнеров
     const containerTable = document.getElementById('container-metrics-table').querySelector('tbody');
@@ -497,15 +573,332 @@ function showDetailedMetrics(data) {
             const row = containerTable.insertRow();
             row.innerHTML = `
                 <td>${container.name}</td>
-                <td>${container.cpu_usage}</td>
-                <td>${container.cpu_limit}</td>
-                <td><span class="badge ${container.cpu_percent > 80 ? 'bg-danger' : container.cpu_percent > 50 ? 'bg-warning' : 'bg-info'}">${container.cpu_percent}%</span></td>
-                <td>${container.memory_usage}</td>
-                <td>${container.memory_limit}</td>
-                <td><span class="badge ${container.memory_percent > 80 ? 'bg-danger' : container.memory_percent > 50 ? 'bg-warning' : 'bg-info'}">${container.memory_percent}%</span></td>
+                <td>${container.cpu_usage || 'N/A'}</td>
+                <td>${container.cpu_limit || 'N/A'}</td>
+                <td><span class="badge ${(container.cpu_percent || 0) > 80 ? 'bg-danger' : (container.cpu_percent || 0) > 50 ? 'bg-warning' : 'bg-info'}">${container.cpu_percent || 0}%</span></td>
+                <td>${container.memory_usage || 'N/A'}</td>
+                <td>${container.memory_limit || 'N/A'}</td>
+                <td><span class="badge ${(container.memory_percent || 0) > 80 ? 'bg-danger' : (container.memory_percent || 0) > 50 ? 'bg-warning' : 'bg-info'}">${container.memory_percent || 0}%</span></td>
             `;
         });
     }
+}
+
+// Создание подробных графиков
+function createDetailedCharts(data) {
+    const cpuCtx = document.getElementById('detailedCpuChart').getContext('2d');
+    const memoryCtx = document.getElementById('detailedMemoryChart').getContext('2d');
+    
+    // Уничтожаем старые графики если есть
+    if (detailedCpuChart) detailedCpuChart.destroy();
+    if (detailedMemoryChart) detailedMemoryChart.destroy();
+    
+    // Проверяем есть ли данные о контейнерах
+    if (!data.containers || !Array.isArray(data.containers) || data.containers.length === 0) {
+        // Создаем заглушки если нет данных
+        detailedCpuChart = new Chart(cpuCtx, {
+            type: 'bar',
+            data: {
+                labels: ['No container data'],
+                datasets: [{
+                    label: 'CPU Usage',
+                    data: [0],
+                    backgroundColor: '#007bff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'CPU Usage per Container'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'mCPU'
+                        }
+                    }
+                }
+            }
+        });
+        
+        detailedMemoryChart = new Chart(memoryCtx, {
+            type: 'bar',
+            data: {
+                labels: ['No container data'],
+                datasets: [{
+                    label: 'Memory Usage',
+                    data: [0],
+                    backgroundColor: '#28a745'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Memory Usage per Container'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'MB'
+                        }
+                    }
+                }
+            }
+        });
+        return;
+    }
+    
+    // Подготавливаем данные для графиков
+    const containerNames = data.containers.map(c => c.name);
+    
+    // CPU данные - парсим строку типа "123m"
+    const cpuData = data.containers.map(c => {
+        if (c.cpu_usage && c.cpu_usage.includes('m')) {
+            const value = parseFloat(c.cpu_usage.replace('m', ''));
+            return isNaN(value) ? 0 : value;
+        }
+        return 0;
+    });
+    
+    // Memory данные - парсим строку с единицами измерения
+    const memoryData = data.containers.map(c => {
+        if (c.memory_usage) {
+            // Парсим строку вида "12.34Mi" или "12345Ki" или "12345678"
+            const match = c.memory_usage.match(/(\d+(?:\.\d+)?)\s*(Ki|Mi|Gi|Ti|B)?/i);
+            if (match) {
+                let value = parseFloat(match[1]);
+                const unit = match[2] || '';
+                
+                if (isNaN(value)) return 0;
+                
+                switch(unit.toLowerCase()) {
+                    case 'ki': return value / 1024; // KiB to MiB
+                    case 'mi': return value; // MiB
+                    case 'gi': return value * 1024; // GiB to MiB
+                    case 'ti': return value * 1024 * 1024; // TiB to MiB
+                    default: return value / (1024 * 1024); // Bytes to MiB
+                }
+            }
+        }
+        return 0;
+    });
+    
+    // Проценты использования (защита от undefined)
+    const cpuPercentData = data.containers.map(c => c.cpu_percent || 0);
+    const memoryPercentData = data.containers.map(c => c.memory_percent || 0);
+    
+    // Определяем цвета для графиков процентов
+    const cpuPercentColors = cpuPercentData.map(p => 
+        p > 80 ? '#dc3545' : p > 50 ? '#ffc107' : '#17a2b8'
+    );
+    
+    const memoryPercentColors = memoryPercentData.map(p => 
+        p > 80 ? '#dc3545' : p > 50 ? '#ffc107' : '#17a2b8'
+    );
+    
+    // Создаем график CPU
+    detailedCpuChart = new Chart(cpuCtx, {
+        type: 'bar',
+        data: {
+            labels: containerNames,
+            datasets: [
+                {
+                    label: 'CPU Usage (m)',
+                    data: cpuData,
+                    backgroundColor: '#007bff',
+                    borderColor: '#0056b3',
+                    borderWidth: 1,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'CPU %',
+                    data: cpuPercentData,
+                    type: 'line',
+                    borderColor: '#ff6b6b',
+                    backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: cpuPercentColors,
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 1,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'CPU Usage per Container',
+                    font: {
+                        size: 14
+                    }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.datasetIndex === 0) {
+                                label += context.parsed.y.toFixed(1) + ' mCPU';
+                            } else {
+                                label += context.parsed.y.toFixed(1) + '%';
+                            }
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'mCPU'
+                    },
+                    position: 'left'
+                },
+                y1: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'Percentage %'
+                    },
+                    position: 'right',
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            }
+        }
+    });
+    
+    // Создаем график Memory
+    detailedMemoryChart = new Chart(memoryCtx, {
+        type: 'bar',
+        data: {
+            labels: containerNames,
+            datasets: [
+                {
+                    label: 'Memory Usage (MB)',
+                    data: memoryData,
+                    backgroundColor: '#28a745',
+                    borderColor: '#1e7e34',
+                    borderWidth: 1,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Memory %',
+                    data: memoryPercentData,
+                    type: 'line',
+                    borderColor: '#4ecdc4',
+                    backgroundColor: 'rgba(78, 205, 196, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: memoryPercentColors,
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 1,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Memory Usage per Container',
+                    font: {
+                        size: 14
+                    }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.datasetIndex === 0) {
+                                label += context.parsed.y.toFixed(2) + ' MB';
+                            } else {
+                                label += context.parsed.y.toFixed(1) + '%';
+                            }
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Memory (MB)'
+                    },
+                    position: 'left'
+                },
+                y1: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'Percentage %'
+                    },
+                    position: 'right',
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            }
+        }
+    });
 }
 
 // Показать логи пода
