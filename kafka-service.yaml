@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-service
+  namespace: market
+  labels:
+    app: kafka-service
+spec:
+  ports:
+  - port: 9092
+    targetPort: 9092
+    name: client
+    nodePort: 31090
+  - port: 9093
+    targetPort: 9093
+    name: internal
+  type: NodePort
+  selector:
+    app: kafka-service
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka-service
+  namespace: market
+spec:
+  serviceName: kafka-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-service
+  template:
+    metadata:
+      labels:
+        app: kafka-service
+    spec:
+      containers:
+      - name: kafka
+        image: confluentinc/cp-kafka:7.4.0
+        ports:
+        - containerPort: 9092
+          name: client
+        - containerPort: 9093
+          name: internal
+        env:
+        - name: KAFKA_BROKER_ID
+          value: "1"
+        - name: KAFKA_ZOOKEEPER_CONNECT
+          value: "zookeeper.market:2181"
+        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+          value: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
+        - name: KAFKA_LISTENERS
+          value: "INTERNAL://0.0.0.0:9093,EXTERNAL://0.0.0.0:9092"
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: "INTERNAL://kafka-service-0.kafka-service.market.svc.cluster.local:9093,EXTERNAL://kafka-service.market:9092"
+        - name: KAFKA_INTER_BROKER_LISTENER_NAME
+          value: "INTERNAL"
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+          value: "1"
+        - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+          value: "true"
+        - name: KAFKA_LOG_RETENTION_HOURS
+          value: "168"
+        - name: KAFKA_LOG_RETENTION_BYTES
+          value: "1073741824"
+        - name: KAFKA_NUM_PARTITIONS
+          value: "3"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        readinessProbe:
+          tcpSocket:
+            port: 9092
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 9092
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          
+kubectl apply -f kafka-service.yaml
