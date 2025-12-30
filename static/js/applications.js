@@ -1,1282 +1,1048 @@
-// Текущий выбранный namespace и режим просмотра
-let currentNamespace = 'all';
-let currentViewMode = 'grid';
-let allApplications = [];
-let currentApp = null;
+// Конфигурация
+const CONFIG = {
+    refreshInterval: 30000,
+    apiTimeout: 10000
+};
 
-// Инициализация при загрузке страницы
+// Состояние приложения
+const AppState = {
+    applications: [],
+    filteredApplications: [],
+    currentNamespace: 'all',
+    currentView: 'grid',
+    sortBy: 'name',
+    sortOrder: 'asc',
+    clusterMetrics: {},
+    refreshIntervalId: null,
+    isLoading: false
+};
+
+// Инициализация при загрузке
 document.addEventListener('DOMContentLoaded', function() {
-    loadApplications();
-    setupEventListeners();
-    initializeCharts();
+    console.log('🚀 Initializing Applications Dashboard...');
+    
+    initEventListeners();
+    loadInitialData();
+    setupAutoRefresh();
+    
+    console.log('✅ Dashboard initialized');
 });
 
-// Настройка слушателей событий
-function setupEventListeners() {
-    // Выбор namespace
-    document.getElementById('namespace-select').addEventListener('change', function() {
-        currentNamespace = this.value;
-        document.getElementById('current-namespace').textContent = 
-            currentNamespace === 'all' ? 'all' : currentNamespace;
-        loadApplications();
+// Инициализация обработчиков событий
+function initEventListeners() {
+    // Навигация
+    document.getElementById('namespace-select').addEventListener('change', handleNamespaceChange);
+    document.getElementById('search-apps').addEventListener('input', debounce(handleSearch, 300));
+    document.getElementById('refresh-btn').addEventListener('click', handleRefresh);
+    
+    // Переключение вида
+    document.querySelectorAll('input[name="view-mode"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            AppState.currentView = e.target.value;
+            renderApplications();
+        });
     });
     
-    // Поиск
-    document.getElementById('search-apps').addEventListener('input', debounce(filterApplications, 300));
-    
-    // Фильтры по типу
-    document.querySelectorAll('#type-deployment, #type-statefulset, #type-daemonset').forEach(checkbox => {
-        checkbox.addEventListener('change', filterApplications);
+    // Сортировка
+    document.querySelectorAll('.sort-option').forEach(option => {
+        option.addEventListener('click', (e) => {
+            e.preventDefault();
+            const sortBy = e.target.dataset.sort;
+            handleSort(sortBy);
+        });
     });
     
-    // Фильтры по статусу
-    document.querySelectorAll('#status-healthy, #status-unhealthy, #status-progressing').forEach(checkbox => {
-        checkbox.addEventListener('change', filterApplications);
-    });
+    // Автообновление
+    document.getElementById('refresh-interval').addEventListener('change', handleAutoRefreshChange);
     
-    // Кнопка обновления
-    document.getElementById('refresh-btn').addEventListener('click', loadApplications);
-    
-    // Обработчик для слайдера масштабирования
-    document.getElementById('scale-app-slider').addEventListener('input', function() {
-        document.getElementById('scale-app-input').value = this.value;
-        document.getElementById('scale-app-value').textContent = this.value;
-    });
-    
-    document.getElementById('scale-app-input').addEventListener('input', function() {
-        const value = Math.min(10, Math.max(0, parseInt(this.value) || 0));
-        document.getElementById('scale-app-slider').value = value;
-        document.getElementById('scale-app-value').textContent = value;
+    // Статус фильтры
+    document.querySelectorAll('input[name="status-filter"]').forEach(checkbox => {
+        checkbox.addEventListener('change', () => {
+            filterApplications();
+            renderApplications();
+        });
     });
 }
 
-// Загрузка списка приложений
-async function loadApplications() {
+// Загрузка данных
+async function loadInitialData() {
+    if (AppState.isLoading) return;
+    
+    AppState.isLoading = true;
     showLoading(true);
     
     try {
-        const url = currentNamespace === 'all' 
-            ? '/api/applications' 
-            : `/api/applications?namespace=${currentNamespace}`;
+        await Promise.all([
+            loadApplications(),
+            loadClusterMetrics()
+        ]);
         
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
+        // Загружаем метрики для приложений
+        await loadApplicationsMetrics();
         
-        const data = await response.json();
-        
-        // Проверяем структуру ответа
-        if (!data) {
-            throw new Error('Empty response from server');
-        }
-        
-        // data.applications может быть undefined, если нет приложений
-        const applications = data.applications || [];
-        const namespace = data.namespace || currentNamespace;
-        const count = data.count || applications.length;
-        
-        allApplications = applications;
-        
-        updateStats(applications);
-        renderApplications(applications);
+        updateDashboard();
         updateLastUpdated();
         
-        console.log(`Loaded ${applications.length} applications from ${namespace}`);
+        showToast('Data loaded successfully', 'success');
         
     } catch (error) {
-        console.error('Error loading applications:', error);
-        showError('Failed to load applications: ' + error.message);
-        
-        // Показываем сообщение об ошибке
-        const grid = document.getElementById('applications-grid');
-        grid.innerHTML = `
-            <div class="col-12 text-center py-5">
-                <i class="fas fa-exclamation-triangle fa-2x text-danger mb-3"></i>
-                <p class="text-danger">Failed to load applications</p>
-                <p class="text-muted small">${error.message}</p>
-                <button class="btn btn-sm btn-outline-primary mt-2" onclick="testConnection()">
-                    Test Connection
-                </button>
-            </div>
-        `;
+        console.error('Error loading data:', error);
+        showError('Failed to load data: ' + error.message);
     } finally {
+        AppState.isLoading = false;
         showLoading(false);
     }
 }
 
-// Обновление статистики
-function updateStats(applications) {
-    const stats = {
-        healthy: 0,
-        warning: 0,
-        error: 0,
-        totalPods: 0
-    };
-    
-    applications.forEach(app => {
-        const ready = app.ready_count || 0;
-        const total = app.total_count || 0;
+// Загрузка приложений
+async function loadApplications() {
+    try {
+        const namespace = AppState.currentNamespace === 'all' ? '' : `?namespace=${AppState.currentNamespace}`;
+        console.log('Loading applications from:', `/api/applications${namespace}`);
         
-        if (ready === total && ready > 0) {
-            stats.healthy++;
-        } else if (ready > 0 && ready < total) {
-            stats.warning++;
+        const response = await fetchWithTimeout(`/api/applications${namespace}`, {
+            timeout: CONFIG.apiTimeout
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('Applications data:', data);
+        
+        AppState.applications = data.applications || [];
+        
+        // Добавляем начальные метрики (демо)
+        AppState.applications.forEach(app => {
+            if (!app.metrics) {
+                app.metrics = {
+                    cpu: Math.floor(Math.random() * 200) + 50,
+                    memory: Math.floor(Math.random() * 512) + 128,
+                    cpuPercent: Math.floor(Math.random() * 60) + 10,
+                    memoryPercent: Math.floor(Math.random() * 70) + 15,
+                    cpuUsage: `${Math.floor(Math.random() * 200) + 50}m`,
+                    memoryUsage: `${Math.floor(Math.random() * 512) + 128}Mi`
+                };
+            }
+        });
+        
+        filterApplications();
+        
+        console.log(`✅ Loaded ${AppState.applications.length} applications`);
+        
+    } catch (error) {
+        console.error('Error loading applications:', error);
+        // Fallback на демо-данные
+        AppState.applications = getDemoApplications();
+        filterApplications();
+        showToast('Using demo data - API not available', 'warning');
+    }
+}
+
+// Загрузка метрик для приложений
+async function loadApplicationsMetrics() {
+    try {
+        if (AppState.currentNamespace !== 'all') {
+            await loadMetricsForNamespace(AppState.currentNamespace);
         } else {
-            stats.error++;
+            // Для всех namespace получаем метрики из общего API
+            const response = await fetchWithTimeout('/api/metrics/all-pods', {
+                timeout: CONFIG.apiTimeout
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                console.log('All pods metrics:', data);
+                
+                // Создаем map для быстрого поиска
+                const metricsMap = {};
+                (data.all_metrics || []).forEach(metric => {
+                    metricsMap[metric.pod] = metric;
+                });
+                
+                // Обновляем метрики приложений
+                AppState.applications.forEach(app => {
+                    if (metricsMap[app.name]) {
+                        const metric = metricsMap[app.name];
+                        app.metrics = {
+                            cpu: metric.cpu_raw || 0,
+                            memory: metric.memory_raw || 0,
+                            cpuPercent: metric.cpu_percent || 0,
+                            memoryPercent: metric.memory_percent || 0,
+                            cpuUsage: metric.cpu || '0m',
+                            memoryUsage: metric.memory || '0Mi'
+                        };
+                    }
+                });
+            }
         }
-        
-        stats.totalPods += total;
-    });
-    
-    document.getElementById('healthy-count').textContent = stats.healthy;
-    document.getElementById('warning-count').textContent = stats.warning;
-    document.getElementById('error-count').textContent = stats.error;
-    document.getElementById('pods-count').textContent = stats.totalPods;
-    document.getElementById('stats-count').textContent = applications.length;
-    document.getElementById('total-apps').textContent = applications.length;
-    document.getElementById('healthy-apps').textContent = `${stats.healthy} healthy`;
-    
-    // Обновляем прогресс-бары ресурсов (заглушка)
-    const cpuUsage = Math.min(100, Math.floor((stats.totalPods * 10) + 20));
-    const memoryUsage = Math.min(100, Math.floor((stats.totalPods * 15) + 25));
-    
-    document.getElementById('cpu-usage').style.width = `${cpuUsage}%`;
-    document.getElementById('cpu-usage').textContent = `${cpuUsage}%`;
-    document.getElementById('memory-usage').style.width = `${memoryUsage}%`;
-    document.getElementById('memory-usage').textContent = `${memoryUsage}%`;
-}
-
-// Рендер приложений в зависимости от режима просмотра
-function renderApplications(applications) {
-    if (currentViewMode === 'grid') {
-        renderApplicationsGrid(applications);
-    } else if (currentViewMode === 'list') {
-        renderApplicationsList(applications);
-    } else if (currentViewMode === 'compact') {
-        renderApplicationsCompact(applications);
+    } catch (error) {
+        console.warn('Could not load applications metrics:', error);
     }
 }
 
-// Рендер в виде сетки (карточек)
-function renderApplicationsGrid(applications) {
-    const grid = document.getElementById('applications-grid');
-    const list = document.getElementById('applications-list');
-    
-    // Показываем сетку, скрываем таблицу
-    grid.style.display = 'block';
-    list.style.display = 'none';
-    
-    // Фильтруем приложения
-    const filteredApps = filterApplicationsList(applications);
-    
-    if (filteredApps.length === 0) {
-        grid.innerHTML = `
-            <div class="col-12 text-center py-5">
-                <i class="fas fa-search fa-2x text-muted mb-3"></i>
-                <p class="text-muted">No applications found</p>
-                ${applications.length > 0 ? '<small class="text-muted">Try changing your filters</small>' : ''}
-                <div class="mt-3">
-                    <button class="btn btn-sm btn-outline-primary" onclick="showDeployModal()">
-                        <i class="fas fa-plus me-1"></i>Deploy First Application
-                    </button>
-                </div>
-            </div>
-        `;
-        return;
+// Загрузка метрик кластера
+async function loadClusterMetrics() {
+    try {
+        console.log('Loading cluster metrics...');
+        const response = await fetchWithTimeout('/api/metrics/nodes', {
+            timeout: CONFIG.apiTimeout
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('Cluster metrics data:', data);
+            AppState.clusterMetrics = data.cluster_usage || {};
+        } else {
+            AppState.clusterMetrics = getDemoClusterMetrics();
+        }
+    } catch (error) {
+        console.warn('Could not load cluster metrics:', error);
+        AppState.clusterMetrics = getDemoClusterMetrics();
     }
-    
-    let html = '';
-    filteredApps.forEach((app, index) => {
-        // Дефолтные значения
-        const name = app.name || `app-${index}`;
-        const namespace = app.namespace || currentNamespace;
-        const type = app.type || 'Deployment';
-        const ready = app.ready || '0/0';
-        const readyCount = app.ready_count || 0;
-        const totalCount = app.total_count || 0;
-        const instances = app.instances || totalCount;
-        const age = app.age || 'unknown';
-        const labels = app.labels || {};
-        
-        // Определяем статус и цвет
-        let status = 'unhealthy';
-        let statusClass = 'unhealthy';
-        let statusColor = 'danger';
-        
-        if (readyCount === totalCount && readyCount > 0) {
-            status = 'healthy';
-            statusClass = 'healthy';
-            statusColor = 'success';
-        } else if (readyCount > 0 && readyCount < totalCount) {
-            status = 'progressing';
-            statusClass = 'progressing';
-            statusColor = 'warning';
-        } else if (readyCount === 0 && totalCount > 0) {
-            status = 'warning';
-            statusClass = 'warning';
-            statusColor = 'warning';
-        }
-        
-        const readyPercentage = totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
-        
-        // Иконка в зависимости от типа
-        let iconClass = 'deployment';
-        let iconColor = '#007bff';
-        if (type.includes('StatefulSet')) {
-            iconClass = 'statefulset';
-            iconColor = '#17a2b8';
-        } else if (type.includes('DaemonSet')) {
-            iconClass = 'daemonset';
-            iconColor = '#ffc107';
-        }
-        
-        // Генерация меток
-        const labelsHtml = Object.entries(labels)
-            .slice(0, 3)
-            .map(([key, value]) => 
-                `<span class="app-label">${key}: ${value}</span>`
-            ).join('');
-        
-        html += `
-            <div class="col-xl-3 col-lg-4 col-md-6 mb-4">
-                <div class="card app-card ${statusClass} fade-in" 
-                     onclick="showAppDetails('${namespace}', '${name}', '${type}')">
-                    <div class="card-body">
-                        <div class="d-flex align-items-start mb-3">
-                            <div class="app-icon ${iconClass}">
-                                <i class="fas ${getAppIcon(type)}"></i>
-                            </div>
-                            <div class="flex-grow-1">
-                                <div class="d-flex justify-content-between align-items-start">
-                                    <h5 class="card-title mb-1">${name}</h5>
-                                    <span class="app-status status-${statusClass}">${status}</span>
-                                </div>
-                                <p class="card-text small text-muted mb-1">
-                                    <i class="fas fa-layer-group me-1"></i>${type}
-                                    <span class="ms-2"><i class="fas fa-cube me-1"></i>${namespace}</span>
-                                </p>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between mb-1">
-                                <small class="text-muted">Pods: ${ready}</small>
-                                <small class="text-muted">${readyPercentage}%</small>
-                            </div>
-                            <div class="resource-progress">
-                                <div class="progress-bar bg-${statusColor}" style="width: ${readyPercentage}%"></div>
-                            </div>
-                        </div>
-                        
-                        <div class="row text-center">
-                            <div class="col-4">
-                                <div class="small text-muted">Instances</div>
-                                <div class="fw-bold">${instances}</div>
-                            </div>
-                            <div class="col-4">
-                                <div class="small text-muted">Age</div>
-                                <div class="fw-bold">${age}</div>
-                            </div>
-                            <div class="col-4">
-                                <div class="small text-muted">Status</div>
-                                <div>
-                                    <span class="badge bg-${statusColor}">${status}</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        ${labelsHtml ? `
-                        <div class="mt-3">
-                            <div class="app-labels">
-                                ${labelsHtml}
-                                ${Object.keys(labels).length > 3 ? 
-                                    `<span class="app-label">+${Object.keys(labels).length - 3} more</span>` : ''}
-                            </div>
-                        </div>
-                        ` : ''}
-                        
-                        <div class="mt-3 pt-3 border-top">
-                            <div class="btn-group w-100">
-                                <button class="btn btn-sm btn-outline-primary" 
-                                        onclick="event.stopPropagation(); scaleApp('${namespace}', '${name}', ${totalCount})">
-                                    <i class="fas fa-expand-alt"></i>
-                                </button>
-                                <button class="btn btn-sm btn-outline-warning" 
-                                        onclick="event.stopPropagation(); restartApp('${namespace}', '${name}')">
-                                    <i class="fas fa-redo"></i>
-                                </button>
-                                <button class="btn btn-sm btn-outline-info" 
-                                        onclick="event.stopPropagation(); showAppYAML('${namespace}', '${name}', '${type}')">
-                                    <i class="fas fa-code"></i>
-                                </button>
-                                <button class="btn btn-sm btn-outline-danger" 
-                                        onclick="event.stopPropagation(); deleteApp('${namespace}', '${name}', '${type}')">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    });
-    
-    grid.innerHTML = html;
 }
 
-// Рендер в виде списка (таблицы)
-function renderApplicationsList(applications) {
-    const grid = document.getElementById('applications-grid');
-    const list = document.getElementById('applications-list');
-    const tbody = document.getElementById('applications-table-body');
-    
-    // Показываем таблицу, скрываем сетку
-    grid.style.display = 'none';
-    list.style.display = 'block';
-    
-    // Фильтруем приложения
-    const filteredApps = filterApplicationsList(applications);
-    
-    if (filteredApps.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="9" class="text-center py-5">
-                    <i class="fas fa-search fa-2x text-muted mb-3"></i>
-                    <p class="text-muted">No applications found</p>
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    let html = '';
-    filteredApps.forEach((app, index) => {
-        const name = app.name || `app-${index}`;
-        const namespace = app.namespace || currentNamespace;
-        const type = app.type || 'Deployment';
-        const ready = app.ready || '0/0';
-        const readyCount = app.ready_count || 0;
-        const totalCount = app.total_count || 0;
-        const age = app.age || 'unknown';
-        
-        // Определяем статус
-        let status = 'unhealthy';
-        let statusClass = 'danger';
-        if (readyCount === totalCount && readyCount > 0) {
-            status = 'healthy';
-            statusClass = 'success';
-        } else if (readyCount > 0 && readyCount < totalCount) {
-            status = 'progressing';
-            statusClass = 'warning';
-        }
-        
-        // Симуляция использования ресурсов
-        const cpuUsage = `${Math.floor(Math.random() * 200) + 50}m`;
-        const memoryUsage = `${Math.floor(Math.random() * 256) + 128}Mi`;
-        
-        html += `
-            <tr onclick="showAppDetails('${namespace}', '${name}', '${type}')" style="cursor: pointer;">
-                <td>
-                    <div class="d-flex align-items-center">
-                        <i class="fas ${getAppIcon(type)} me-2 text-primary"></i>
-                        <strong>${name}</strong>
-                    </div>
-                </td>
-                <td><span class="badge bg-secondary">${namespace}</span></td>
-                <td><span class="badge bg-info">${type}</span></td>
-                <td>
-                    <span class="badge bg-${statusClass}">
-                        ${status}
-                    </span>
-                </td>
-                <td>
-                    <span class="badge ${readyCount === totalCount ? 'bg-success' : 'bg-warning'}">
-                        ${ready}
-                    </span>
-                </td>
-                <td><small>${cpuUsage}</small></td>
-                <td><small>${memoryUsage}</small></td>
-                <td><small class="text-muted">${age}</small></td>
-                <td>
-                    <div class="btn-group">
-                        <button class="btn btn-sm btn-outline-primary" 
-                                onclick="event.stopPropagation(); scaleApp('${namespace}', '${name}', ${totalCount})">
-                            <i class="fas fa-expand-alt"></i>
-                        </button>
-                        <button class="btn btn-sm btn-outline-warning" 
-                                onclick="event.stopPropagation(); restartApp('${namespace}', '${name}')">
-                            <i class="fas fa-redo"></i>
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger" 
-                                onclick="event.stopPropagation(); deleteApp('${namespace}', '${name}', '${type}')">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `;
-    });
-    
-    tbody.innerHTML = html;
-}
-
-// Рендер в компактном виде
-function renderApplicationsCompact(applications) {
-    const grid = document.getElementById('applications-grid');
-    const list = document.getElementById('applications-list');
-    
-    grid.style.display = 'block';
-    list.style.display = 'none';
-    
-    // Фильтруем приложения
-    const filteredApps = filterApplicationsList(applications);
-    
-    if (filteredApps.length === 0) {
-        grid.innerHTML = `
-            <div class="col-12 text-center py-5">
-                <i class="fas fa-search fa-2x text-muted mb-3"></i>
-                <p class="text-muted">No applications found</p>
-            </div>
-        `;
-        return;
-    }
-    
-    let html = '';
-    filteredApps.forEach((app, index) => {
-        const name = app.name || `app-${index}`;
-        const namespace = app.namespace || currentNamespace;
-        const type = app.type || 'Deployment';
-        const ready = app.ready || '0/0';
-        const readyCount = app.ready_count || 0;
-        const totalCount = app.total_count || 0;
-        
-        let statusClass = 'danger';
-        if (readyCount === totalCount && readyCount > 0) {
-            statusClass = 'success';
-        } else if (readyCount > 0 && readyCount < totalCount) {
-            statusClass = 'warning';
-        }
-        
-        html += `
-            <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6 mb-3">
-                <div class="card compact-card app-card" 
-                     onclick="showAppDetails('${namespace}', '${name}', '${type}')">
-                    <div class="card-body p-3">
-                        <div class="d-flex align-items-center mb-2">
-                            <div class="app-icon ${type.toLowerCase()}">
-                                <i class="fas ${getAppIcon(type)}"></i>
-                            </div>
-                            <div class="flex-grow-1 ms-2">
-                                <h6 class="mb-0">${name}</h6>
-                                <small class="text-muted">${namespace}</small>
-                            </div>
-                            <span class="badge bg-${statusClass}">${ready}</span>
-                        </div>
-                        <div class="d-flex justify-content-between small">
-                            <span>${type}</span>
-                            <span class="text-muted">${readyCount}/${totalCount}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    });
-    
-    grid.innerHTML = html;
-}
-
-// Фильтрация списка приложений
-function filterApplicationsList(applications) {
+// Фильтрация и сортировка
+function filterApplications() {
     const searchTerm = document.getElementById('search-apps').value.toLowerCase();
     
-    // Фильтры по типу
-    const activeTypes = Array.from(document.querySelectorAll(
-        '#type-deployment, #type-statefulset, #type-daemonset'
-    ))
-    .filter(cb => cb.checked)
-    .map(cb => cb.value);
-    
-    // Фильтры по статусу
-    const activeStatuses = Array.from(document.querySelectorAll(
-        '#status-healthy, #status-unhealthy, #status-progressing'
-    ))
-    .filter(cb => cb.checked)
-    .map(cb => cb.value);
-    
-    return applications.filter(app => {
-        // Проверяем структуру объекта app
-        if (!app || typeof app !== 'object') return false;
-        
-        // Поиск по имени
-        if (searchTerm && (!app.name || !app.name.toLowerCase().includes(searchTerm))) {
+    AppState.filteredApplications = AppState.applications.filter(app => {
+        // Поиск
+        if (searchTerm && !app.name.toLowerCase().includes(searchTerm) && 
+            !app.namespace.toLowerCase().includes(searchTerm)) {
             return false;
         }
         
-        // Фильтр по типу
-        if (activeTypes.length > 0) {
-            const appType = app.type || 'Deployment';
-            if (!activeTypes.some(type => appType.includes(type))) {
-                return false;
-            }
-        }
+        // Фильтры статуса
+        const statusFilters = Array.from(document.querySelectorAll('input[name="status-filter"]:checked'))
+            .map(cb => cb.value);
         
-        // Фильтр по статусу
-        if (activeStatuses.length > 0) {
-            const readyCount = app.ready_count || 0;
-            const totalCount = app.total_count || 0;
-            let status = '';
-            
-            if (readyCount === totalCount && readyCount > 0) {
-                status = 'healthy';
-            } else if (readyCount > 0 && readyCount < totalCount) {
-                status = 'progressing';
-            } else {
-                status = 'unhealthy';
-            }
-            
-            if (!activeStatuses.includes(status)) {
+        if (statusFilters.length > 0) {
+            const status = getAppStatus(app);
+            if (!statusFilters.includes(status)) {
                 return false;
             }
         }
         
         return true;
     });
+    
+    sortApplications();
 }
 
-// Функция фильтрации (вызывается при изменении фильтров)
-function filterApplications() {
-    renderApplications(allApplications);
+function sortApplications() {
+    AppState.filteredApplications.sort((a, b) => {
+        let aVal, bVal;
+        
+        switch (AppState.sortBy) {
+            case 'name':
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+                break;
+            case 'namespace':
+                aVal = a.namespace.toLowerCase();
+                bVal = b.namespace.toLowerCase();
+                break;
+            case 'cpu':
+                aVal = a.metrics?.cpu || 0;
+                bVal = b.metrics?.cpu || 0;
+                break;
+            case 'memory':
+                aVal = a.metrics?.memory || 0;
+                bVal = b.metrics?.memory || 0;
+                break;
+            case 'pods':
+                aVal = a.total_count || 0;
+                bVal = b.total_count || 0;
+                break;
+            default:
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+        }
+        
+        return AppState.sortOrder === 'asc' ? 
+            (aVal > bVal ? 1 : -1) : 
+            (aVal < bVal ? 1 : -1);
+    });
 }
 
-// Изменение режима просмотра
-function setViewMode(mode) {
-    currentViewMode = mode;
-    renderApplications(allApplications);
-}
-
-function toggleViewMode() {
-    // Переключаем между grid и list
-    if (currentViewMode === 'grid') {
-        setViewMode('list');
+// Рендеринг
+function renderApplications() {
+    if (AppState.currentView === 'grid') {
+        renderGrid();
     } else {
-        setViewMode('grid');
+        renderTable();
     }
+    
+    updateApplicationsCount();
 }
 
-// Показать детали приложения
-async function showAppDetails(namespace, name, type) {
-    currentApp = { namespace, name, type };
+function renderGrid() {
+    const container = document.getElementById('applications-grid');
+    const tableView = document.getElementById('applications-table');
     
-    document.getElementById('app-details-name').textContent = name;
-    const modal = new bootstrap.Modal(document.getElementById('appDetailsModal'));
-    modal.show();
+    if (!container) return;
     
-    await loadAppDetails(namespace, name, type);
-}
-
-// Загрузить детали приложения
-async function loadAppDetails(namespace, name, type) {
-    try {
-        // Загружаем базовую информацию
-        document.getElementById('app-name').textContent = name;
-        document.getElementById('app-namespace').textContent = namespace;
-        document.getElementById('app-type').textContent = type;
-        document.getElementById('app-created').textContent = new Date().toLocaleString();
-        
-        // Загружаем деплоймент для получения деталей
-        let url = '';
-        if (type.includes('Deployment')) {
-            url = `/api/deployment/yaml/${namespace}/${name}`;
-        } else {
-            // Для других типов можно добавить аналогичные эндпоинты
-            url = `/api/deployments?namespace=${namespace}`;
-        }
-        
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const data = await response.json();
-        
-        // Обновляем статус
-        const readyCount = data.status?.readyReplicas || 0;
-        const totalCount = data.spec?.replicas || 0;
-        const status = readyCount === totalCount ? 'Healthy' : 'Unhealthy';
-        
-        document.getElementById('app-status').innerHTML = `
-            <span class="badge ${readyCount === totalCount ? 'bg-success' : 'bg-warning'}">
-                ${status}
-            </span>
-        `;
-        
-        document.getElementById('app-pods-ready').textContent = readyCount;
-        document.getElementById('app-pods-total').textContent = totalCount;
-        
-        const podsPercentage = totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
-        document.getElementById('app-pods-progress').style.width = `${podsPercentage}%`;
-        
-        // Симуляция использования ресурсов
-        const cpuUsage = Math.min(100, Math.floor(Math.random() * 60) + 20);
-        const memoryUsage = Math.min(100, Math.floor(Math.random() * 70) + 15);
-        
-        document.getElementById('app-cpu-progress').style.width = `${cpuUsage}%`;
-        document.getElementById('app-memory-progress').style.width = `${memoryUsage}%`;
-        
-        // Лейблы
-        const labelsContainer = document.getElementById('app-labels');
-        labelsContainer.innerHTML = '';
-        if (data.metadata?.labels) {
-            Object.entries(data.metadata.labels).forEach(([key, value]) => {
-                const badge = document.createElement('span');
-                badge.className = 'badge bg-secondary me-1 mb-1';
-                badge.textContent = `${key}: ${value}`;
-                labelsContainer.appendChild(badge);
-            });
-        }
-        
-        // YAML конфигурация
-        if (data.yaml) {
-            document.getElementById('app-yaml').textContent = data.yaml;
-        } else if (data) {
-            document.getElementById('app-yaml').textContent = JSON.stringify(data, null, 2);
-        }
-        
-        // Загружаем поды
-        await loadAppPods(namespace, name);
-        
-        // Загружаем сервисы
-        await loadAppServices(namespace, name);
-        
-        // Обновляем графики
-        updateAppCharts();
-        
-    } catch (error) {
-        console.error('Error loading app details:', error);
-        showError('Failed to load application details: ' + error.message);
+    container.style.display = 'flex';
+    container.classList.add('row');
+    if (tableView) tableView.style.display = 'none';
+    
+    if (AppState.filteredApplications.length === 0) {
+        container.innerHTML = createEmptyState();
+        return;
     }
-}
-
-// Загрузить поды приложения
-async function loadAppPods(namespace, appName) {
-    try {
-        const response = await fetch(`/api/pods?namespace=${namespace}`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const data = await response.json();
-        const pods = data.pods || [];
-        
-        // Фильтруем поды по имени приложения
-        const appPods = pods.filter(pod => pod.name.includes(appName));
-        
-        const tbody = document.getElementById('app-pods-list');
-        let html = '';
-        
-        appPods.forEach(pod => {
-            const statusClass = pod.status === 'Running' ? 'success' : 
-                               pod.status === 'Pending' ? 'warning' : 'danger';
+    
+    let html = '';
+    AppState.filteredApplications.forEach(app => {
+        html += createAppCard(app);
+    });
+    
+    container.innerHTML = html;
+    
+    // Добавляем обработчики для карточек
+    setTimeout(() => {
+        document.querySelectorAll('.app-card').forEach(card => {
+            const appName = card.dataset.appName;
+            const namespace = card.dataset.namespace;
             
-            html += `
-                <tr>
-                    <td><small>${pod.name}</small></td>
-                    <td>
-                        <span class="badge bg-${statusClass}">${pod.status}</span>
-                    </td>
-                    <td>
-                        <span class="badge ${pod.ready === pod.ready ? 'bg-success' : 'bg-warning'}">
-                            ${pod.ready}
-                        </span>
-                    </td>
-                    <td>
-                        <span class="badge ${pod.restarts > 0 ? 'bg-warning' : 'bg-secondary'}">
-                            ${pod.restarts}
-                        </span>
-                    </td>
-                    <td><small>${pod.age}</small></td>
-                    <td><small>${pod.node || '-'}</small></td>
-                    <td>
-                        <button class="btn btn-xs btn-outline-primary" 
-                                onclick="showPodLogs('${pod.namespace}', '${pod.name}')">
-                            <i class="fas fa-file-alt"></i>
-                        </button>
-                    </td>
-                </tr>
-            `;
+            card.addEventListener('click', (e) => {
+                if (!e.target.closest('.btn-action')) {
+                    showAppDetails(appName, namespace);
+                }
+            });
         });
         
-        tbody.innerHTML = html || '<tr><td colspan="7" class="text-center">No pods found</td></tr>';
-        
-    } catch (error) {
-        console.error('Error loading app pods:', error);
-    }
-}
-
-// Загрузить сервисы приложения
-async function loadAppServices(namespace, appName) {
-    try {
-        const response = await fetch(`/api/services?namespace=${namespace}`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const data = await response.json();
-        const services = data.services || [];
-        
-        // Фильтруем сервисы по имени приложения
-        const appServices = services.filter(svc => 
-            svc.name.includes(appName) || svc.name === appName
-        );
-        
-        const tbody = document.getElementById('app-services-list');
-        let html = '';
-        
-        appServices.forEach(svc => {
-            html += `
-                <tr>
-                    <td><small>${svc.name}</small></td>
-                    <td><span class="badge bg-info">${svc.type}</span></td>
-                    <td><small>${svc.clusterIP}</small></td>
-                    <td><small>${Array.isArray(svc.ports) ? svc.ports.join(', ') : svc.ports}</small></td>
-                    <td><small>${svc.age}</small></td>
-                </tr>
-            `;
+        // Кнопки действий
+        document.querySelectorAll('.btn-action').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = btn.dataset.action;
+                const appName = btn.dataset.appName;
+                const namespace = btn.dataset.namespace;
+                
+                if (action && appName && namespace) {
+                    handleAppAction(action, appName, namespace, btn.dataset.replicas);
+                }
+            });
         });
-        
-        tbody.innerHTML = html || '<tr><td colspan="5" class="text-center">No services found</td></tr>';
-        
-    } catch (error) {
-        console.error('Error loading app services:', error);
-    }
+    }, 100);
 }
 
-// Показать логи пода
-async function showPodLogs(namespace, podName) {
-    try {
-        const response = await fetch(`/api/logs/${namespace}/${podName}?tail=50`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const data = await response.json();
-        
-        // Показываем логи в новом окне
-        const logWindow = window.open('', '_blank');
-        logWindow.document.write(`
-            <html>
-            <head><title>Logs: ${podName}</title>
-            <style>
-                body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
-                pre { white-space: pre-wrap; }
-            </style>
-            </head>
-            <body>
-                <h2>Logs: ${podName}</h2>
-                <pre>${data.logs}</pre>
-            </body>
-            </html>
-        `);
-        
-    } catch (error) {
-        showToast(`Failed to load logs: ${error.message}`, 'error');
-    }
-}
-
-// Масштабирование приложения
-function scaleApp(namespace, name, currentReplicas) {
-    currentApp = { namespace, name };
+function renderTable() {
+    const container = document.getElementById('applications-grid');
+    const tableView = document.getElementById('applications-table');
     
-    document.getElementById('scale-app-name').textContent = name;
-    document.getElementById('scale-current-replicas').textContent = currentReplicas;
-    document.getElementById('scale-app-slider').value = currentReplicas;
-    document.getElementById('scale-app-input').value = currentReplicas;
-    document.getElementById('scale-app-value').textContent = currentReplicas;
+    if (!container || !tableView) return;
+    
+    container.style.display = 'none';
+    tableView.style.display = 'block';
+    
+    const tbody = document.getElementById('applications-table-body');
+    if (!tbody) return;
+    
+    if (AppState.filteredApplications.length === 0) {
+        tbody.innerHTML = createEmptyTableState();
+        return;
+    }
+    
+    let html = '';
+    AppState.filteredApplications.forEach(app => {
+        html += createTableRow(app);
+    });
+    
+    tbody.innerHTML = html;
+    
+    // Добавляем обработчики для строк таблицы
+    setTimeout(() => {
+        document.querySelectorAll('.app-row').forEach(row => {
+            const appName = row.dataset.appName;
+            const namespace = row.dataset.namespace;
+            
+            row.addEventListener('click', (e) => {
+                if (!e.target.closest('.btn-action') && !e.target.closest('td:last-child')) {
+                    showAppDetails(appName, namespace);
+                }
+            });
+        });
+        
+        // Кнопки действий в таблице
+        document.querySelectorAll('.table .btn-action').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = btn.dataset.action;
+                const appName = btn.dataset.appName;
+                const namespace = btn.dataset.namespace;
+                
+                if (action && appName && namespace) {
+                    handleAppAction(action, appName, namespace, btn.dataset.replicas);
+                }
+            });
+        });
+    }, 100);
+}
+
+// Создание карточки приложения
+function createAppCard(app) {
+    const status = getAppStatus(app);
+    const metrics = app.metrics || {};
+    const cpuUsage = metrics.cpuUsage || `${metrics.cpu || 0}m`;
+    const memoryUsage = metrics.memoryUsage || formatBytes(metrics.memory || 0);
+    const cpuPercent = metrics.cpuPercent || Math.min(100, (metrics.cpu || 0) / 2);
+    const memoryPercent = metrics.memoryPercent || Math.min(100, (metrics.memory || 0) / (1024 * 1024 * 100));
+    
+    return `
+        <div class="col-xl-3 col-lg-4 col-md-6 mb-4">
+            <div class="card app-card ${status}" 
+                 data-app-name="${app.name}" 
+                 data-namespace="${app.namespace}">
+                <div class="card-body">
+                    <div class="d-flex align-items-start mb-3">
+                        <div class="app-icon ${app.type?.toLowerCase() || 'deployment'}">
+                            <i class="fas ${getAppIcon(app.type)}"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <h5 class="card-title mb-1" title="${app.name}">
+                                    ${truncateText(app.name, 20)}
+                                </h5>
+                                <span class="app-status status-${status}">${status}</span>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <small class="text-muted">
+                                    <i class="fas fa-layer-group me-1"></i>${app.type || 'Deployment'}
+                                </small>
+                                <span class="mx-2 text-muted">•</span>
+                                <small class="text-muted">
+                                    <i class="fas fa-cube me-1"></i>${app.namespace}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Pod status -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <small class="text-muted">Pods</small>
+                            <small class="text-muted">${app.ready_count || 0}/${app.total_count || 0}</small>
+                        </div>
+                        <div class="resource-progress">
+                            <div class="progress-bar bg-${getStatusColor(status)}" 
+                                 style="width: ${app.total_count ? ((app.ready_count || 0) / app.total_count * 100) : 0}%">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Resource metrics -->
+                    <div class="mb-3">
+                        <div class="resource-metric">
+                            <div class="resource-label">
+                                <span>CPU</span>
+                                <span>${cpuUsage}</span>
+                            </div>
+                            <div class="resource-progress">
+                                <div class="progress-bar bg-success" style="width: ${cpuPercent}%"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="resource-metric">
+                            <div class="resource-label">
+                                <span>Memory</span>
+                                <span>${memoryUsage}</span>
+                            </div>
+                            <div class="resource-progress">
+                                <div class="progress-bar bg-info" style="width: ${memoryPercent}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Actions -->
+                    <div class="d-flex justify-content-between">
+                        <button class="btn btn-sm btn-outline-primary btn-action" 
+                                data-action="metrics" 
+                                data-app-name="${app.name}" 
+                                data-namespace="${app.namespace}"
+                                title="View metrics">
+                            <i class="fas fa-chart-line"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning btn-action" 
+                                data-action="restart" 
+                                data-app-name="${app.name}" 
+                                data-namespace="${app.namespace}"
+                                title="Restart">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-success btn-action" 
+                                data-action="scale" 
+                                data-app-name="${app.name}" 
+                                data-namespace="${app.namespace}"
+                                data-replicas="${app.total_count || 1}"
+                                title="Scale">
+                            <i class="fas fa-expand-alt"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger btn-action" 
+                                data-action="delete" 
+                                data-app-name="${app.name}" 
+                                data-namespace="${app.namespace}"
+                                title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Создание строки таблицы
+function createTableRow(app) {
+    const status = getAppStatus(app);
+    const metrics = app.metrics || {};
+    const cpuUsage = metrics.cpuUsage || `${metrics.cpu || 0}m`;
+    const memoryUsage = metrics.memoryUsage || formatBytes(metrics.memory || 0);
+    
+    return `
+        <tr class="app-row" data-app-name="${app.name}" data-namespace="${app.namespace}">
+            <td>
+                <div class="d-flex align-items-center">
+                    <span class="status-indicator ${status}"></span>
+                    <div>
+                        <strong>${app.name}</strong>
+                        <small class="text-muted d-block">${app.namespace}</small>
+                    </div>
+                </div>
+            </td>
+            <td>
+                <span class="badge bg-secondary">${app.type || 'Deployment'}</span>
+            </td>
+            <td>
+                <span class="badge bg-${getStatusColor(status)}">${status}</span>
+            </td>
+            <td>
+                <div class="d-flex align-items-center">
+                    <div class="progress flex-grow-1 me-2" style="height: 6px;">
+                        <div class="progress-bar bg-${getStatusColor(status)}" 
+                             style="width: ${app.total_count ? ((app.ready_count || 0) / app.total_count * 100) : 0}%">
+                        </div>
+                    </div>
+                    <small>${app.ready_count || 0}/${app.total_count || 0}</small>
+                </div>
+            </td>
+            <td>
+                <div class="metrics-bar">
+                    <div class="metric-bar">
+                        <div class="metric-bar-fill cpu" 
+                             style="width: ${Math.min(100, (metrics.cpu || 0) / 2)}%"></div>
+                    </div>
+                    <span class="metric-value">${cpuUsage}</span>
+                </div>
+            </td>
+            <td>
+                <div class="metrics-bar">
+                    <div class="metric-bar">
+                        <div class="metric-bar-fill memory" 
+                             style="width: ${Math.min(100, (metrics.memory || 0) / (1024 * 1024 * 2))}%"></div>
+                    </div>
+                    <span class="metric-value">${memoryUsage}</span>
+                </div>
+            </td>
+            <td>
+                <small class="text-muted">${formatAge(app.age)}</small>
+            </td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary btn-action" 
+                            data-action="metrics" 
+                            data-app-name="${app.name}" 
+                            data-namespace="${app.namespace}"
+                            title="Metrics">
+                        <i class="fas fa-chart-line"></i>
+                    </button>
+                    <button class="btn btn-outline-success btn-action" 
+                            data-action="scale" 
+                            data-app-name="${app.name}" 
+                            data-namespace="${app.namespace}"
+                            data-replicas="${app.total_count || 1}"
+                            title="Scale">
+                        <i class="fas fa-expand-alt"></i>
+                    </button>
+                    <button class="btn btn-outline-danger btn-action" 
+                            data-action="delete" 
+                            data-app-name="${app.name}" 
+                            data-namespace="${app.namespace}"
+                            title="Delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+// Обновление дашборда
+function updateDashboard() {
+    updateMetricsDashboard();
+    renderApplications();
+    updateClusterStats();
+}
+
+function updateMetricsDashboard() {
+    const metrics = AppState.clusterMetrics;
+    
+    console.log('Updating metrics dashboard with:', metrics);
+    
+    // CPU
+    const cpuPercent = metrics.cpu_percent || 0;
+    document.getElementById('cpu-usage-value').textContent = `${cpuPercent}%`;
+    document.getElementById('cpu-progress').style.width = `${cpuPercent}%`;
+    document.getElementById('cpu-usage-detail').textContent = 
+        `${metrics.total_cpu_used || '0m'} / ${metrics.total_cpu_allocatable || '0m'}`;
+    
+    // Memory
+    const memoryPercent = metrics.memory_percent || 0;
+    document.getElementById('memory-usage-value').textContent = `${memoryPercent}%`;
+    document.getElementById('memory-progress').style.width = `${memoryPercent}%`;
+    document.getElementById('memory-usage-detail').textContent = 
+        `${metrics.total_memory_used || '0Gi'} / ${metrics.total_memory_allocatable || '0Gi'}`;
+    
+    // Pods
+    const totalPods = AppState.applications.reduce((sum, app) => sum + (app.total_count || 0), 0);
+    const readyPods = AppState.applications.reduce((sum, app) => sum + (app.ready_count || 0), 0);
+    
+    document.getElementById('pod-status-value').textContent = `${readyPods}/${totalPods}`;
+    document.getElementById('ready-pods').textContent = readyPods;
+    document.getElementById('pending-pods').textContent = Math.max(0, totalPods - readyPods - Math.floor(totalPods * 0.1));
+    document.getElementById('failed-pods').textContent = Math.max(0, totalPods - readyPods - Math.floor(totalPods * 0.2));
+    
+    // Applications count
+    document.getElementById('apps-count').textContent = AppState.applications.length;
+    
+    // Update mini charts
+    updateMiniCharts();
+}
+
+function updateClusterStats() {
+    const metrics = AppState.clusterMetrics;
+    
+    document.getElementById('stats-count').textContent = AppState.applications.length;
+    document.getElementById('stats-pods').textContent = 
+        AppState.applications.reduce((sum, app) => sum + (app.total_count || 0), 0);
+    document.getElementById('stats-nodes').textContent = metrics.node_count || '?';
+}
+
+function updateMiniCharts() {
+    // CPU sparkline
+    updateSparkline('cpu-chart-small', AppState.clusterMetrics.cpu_percent || 0, '#28a745');
+    
+    // Memory sparkline
+    updateSparkline('memory-chart-small', AppState.clusterMetrics.memory_percent || 0, '#17a2b8');
+    
+    // Pod status donut
+    updatePodDonut();
+}
+
+function updateSparkline(elementId, value, color) {
+    const container = document.getElementById(elementId);
+    if (!container) return;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 60;
+    canvas.height = 30;
+    const ctx = canvas.getContext('2d');
+    
+    // Простой график
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.moveTo(5, 20);
+    ctx.lineTo(25, 15);
+    ctx.lineTo(45, 10);
+    ctx.lineTo(55, 5);
+    ctx.stroke();
+    
+    container.innerHTML = '';
+    container.appendChild(canvas);
+}
+
+function updatePodDonut() {
+    const container = document.getElementById('pod-chart-small');
+    if (!container) return;
+    
+    const totalPods = AppState.applications.reduce((sum, app) => sum + (app.total_count || 0), 0);
+    const readyPods = AppState.applications.reduce((sum, app) => sum + (app.ready_count || 0), 0);
+    const readyPercent = totalPods ? (readyPods / totalPods * 100) : 0;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 50;
+    canvas.height = 50;
+    const ctx = canvas.getContext('2d');
+    
+    // Фон
+    ctx.beginPath();
+    ctx.arc(25, 25, 20, 0, Math.PI * 2);
+    ctx.fillStyle = '#e9ecef';
+    ctx.fill();
+    
+    // Прогресс
+    const startAngle = -Math.PI / 2;
+    const endAngle = startAngle + (Math.PI * 2 * readyPercent / 100);
+    
+    ctx.beginPath();
+    ctx.arc(25, 25, 20, startAngle, endAngle);
+    ctx.lineTo(25, 25);
+    ctx.closePath();
+    ctx.fillStyle = readyPercent >= 90 ? '#28a745' : 
+                    readyPercent >= 70 ? '#ffc107' : '#dc3545';
+    ctx.fill();
+    
+    // Текст
+    ctx.fillStyle = '#495057';
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${Math.round(readyPercent)}%`, 25, 25);
+    
+    container.innerHTML = '';
+    container.appendChild(canvas);
+}
+
+// Обработчики событий
+function handleNamespaceChange(e) {
+    AppState.currentNamespace = e.target.value;
+    document.getElementById('current-namespace').textContent = 
+        AppState.currentNamespace === 'all' ? 'all' : AppState.currentNamespace;
+    loadInitialData();
+}
+
+function handleSearch() {
+    filterApplications();
+    renderApplications();
+}
+
+function handleRefresh() {
+    loadInitialData();
+}
+
+function handleSort(sortBy) {
+    if (AppState.sortBy === sortBy) {
+        AppState.sortOrder = AppState.sortOrder === 'asc' ? 'desc' : 'asc';
+    } else {
+        AppState.sortBy = sortBy;
+        AppState.sortOrder = 'asc';
+    }
+    
+    sortApplications();
+    renderApplications();
+    updateSortIndicator();
+}
+
+function handleAutoRefreshChange(e) {
+    const interval = parseInt(e.target.value) * 1000;
+    setupAutoRefresh(interval);
+    
+    const statusElement = document.getElementById('auto-refresh-status');
+    if (interval > 0) {
+        statusElement.innerHTML = `<i class="fas fa-sync-alt"></i> Auto: ${e.target.value}s`;
+        statusElement.className = 'badge bg-success ms-2';
+    } else {
+        statusElement.innerHTML = `<i class="fas fa-sync-alt"></i> Auto: Off`;
+        statusElement.className = 'badge bg-secondary ms-2';
+    }
+}
+
+function handleAppAction(action, appName, namespace, replicas) {
+    switch (action) {
+        case 'metrics':
+            showAppMetrics(appName, namespace);
+            break;
+        case 'scale':
+            showScaleModal(appName, namespace, replicas);
+            break;
+        case 'restart':
+            restartApp(appName, namespace);
+            break;
+        case 'delete':
+            deleteApp(appName, namespace);
+            break;
+    }
+}
+
+// Действия с приложениями
+async function showAppMetrics(appName, namespace) {
+    try {
+        console.log(`Loading metrics for ${namespace}/${appName}`);
+        const response = await fetch(`/api/metrics/pod/${namespace}/${appName}`);
+        if (response.ok) {
+            const data = await response.json();
+            console.log('App metrics data:', data);
+            showAppMetricsModal(appName, namespace, data);
+        } else {
+            // Пробуем загрузить из общего списка
+            const allResponse = await fetch('/api/metrics/all-pods');
+            if (allResponse.ok) {
+                const allData = await allResponse.json();
+                const appMetric = allData.all_metrics?.find(m => m.pod === appName && m.namespace === namespace);
+                if (appMetric) {
+                    showAppMetricsModal(appName, namespace, {
+                        total_cpu: appMetric.cpu,
+                        total_memory: appMetric.memory,
+                        containers: []
+                    });
+                } else {
+                    throw new Error('Metrics not found');
+                }
+            } else {
+                throw new Error('Failed to load metrics');
+            }
+        }
+    } catch (error) {
+        console.error('Error loading app metrics:', error);
+        showError('Could not load application metrics. Using demo data.');
+        
+        // Показываем демо-данные
+        showAppMetricsModal(appName, namespace, {
+            total_cpu: `${Math.floor(Math.random() * 200) + 50}m`,
+            total_memory: `${Math.floor(Math.random() * 512) + 128}Mi`,
+            containers: [
+                {
+                    name: 'main',
+                    cpu_usage: `${Math.floor(Math.random() * 100) + 20}m`,
+                    cpu_limit: '200m',
+                    cpu_percent: Math.floor(Math.random() * 60) + 20,
+                    memory_usage: `${Math.floor(Math.random() * 256) + 64}Mi`,
+                    memory_limit: '512Mi',
+                    memory_percent: Math.floor(Math.random() * 70) + 15
+                }
+            ]
+        });
+    }
+}
+
+function showAppMetricsModal(appName, namespace, metrics) {
+    const modalElement = document.getElementById('appMetricsModal');
+    if (!modalElement) return;
+    
+    // Заполняем данные
+    document.getElementById('metrics-app-name').textContent = appName;
+    document.getElementById('metrics-namespace').textContent = namespace;
+    
+    if (metrics) {
+        document.getElementById('metrics-cpu').textContent = metrics.total_cpu || '0m';
+        document.getElementById('metrics-memory').textContent = metrics.total_memory || '0Mi';
+        
+        // Контейнеры
+        const containersList = document.getElementById('metrics-containers');
+        if (containersList) {
+            if (metrics.containers && metrics.containers.length > 0) {
+                containersList.innerHTML = metrics.containers.map(container => `
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${container.name}</strong>
+                                <div class="small text-muted">
+                                    CPU: ${container.cpu_usage || '0m'} / ${container.cpu_limit || 'N/A'}
+                                </div>
+                                <div class="small text-muted">
+                                    Memory: ${container.memory_usage || '0Mi'} / ${container.memory_limit || 'N/A'}
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <div class="progress mb-1" style="width: 60px; height: 4px;">
+                                    <div class="progress-bar bg-success" style="width: ${container.cpu_percent || 0}%"></div>
+                                </div>
+                                <div class="progress" style="width: 60px; height: 4px;">
+                                    <div class="progress-bar bg-info" style="width: ${container.memory_percent || 0}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                containersList.innerHTML = `
+                    <div class="list-group-item text-muted text-center">
+                        No detailed container metrics available
+                    </div>
+                `;
+            }
+        }
+    }
+    
+    const modal = new bootstrap.Modal(modalElement);
+    modal.show();
+}
+
+function showScaleModal(appName, namespace, currentReplicas) {
+    document.getElementById('scale-app-name').textContent = appName;
+    document.getElementById('scale-current-replicas').textContent = currentReplicas || 1;
+    
+    const slider = document.getElementById('scale-replicas-slider');
+    const input = document.getElementById('scale-replicas-input');
+    const display = document.getElementById('scale-replicas-display');
+    
+    if (slider && input && display) {
+        const replicas = parseInt(currentReplicas) || 1;
+        slider.value = replicas;
+        input.value = replicas;
+        display.textContent = replicas;
+        
+        // Обработчики
+        slider.oninput = function() {
+            input.value = this.value;
+            display.textContent = this.value;
+        };
+        
+        input.oninput = function() {
+            let value = parseInt(this.value) || 1;
+            value = Math.max(1, Math.min(20, value));
+            slider.value = value;
+            display.textContent = value;
+        };
+    }
     
     const modal = new bootstrap.Modal(document.getElementById('scaleAppModal'));
     modal.show();
 }
 
-async function confirmScaleApp() {
-    const replicas = parseInt(document.getElementById('scale-app-input').value);
-    const namespace = currentApp.namespace;
-    const name = currentApp.name;
-    
-    if (isNaN(replicas) || replicas < 0) {
-        showToast('Please enter a valid number of replicas', 'error');
-        return;
-    }
+async function confirmScale() {
+    const appName = document.getElementById('scale-app-name').textContent;
+    const namespace = AppState.currentNamespace === 'all' ? 'default' : AppState.currentNamespace;
+    const replicas = parseInt(document.getElementById('scale-replicas-input').value) || 1;
     
     try {
-        const response = await fetch(`/api/scale/${namespace}/${name}?replicas=${replicas}`, {
-            method: 'POST'
-        });
+        console.log(`Scaling ${appName} in ${namespace} to ${replicas} replicas`);
         
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || `HTTP ${response.status}`);
-        }
-        
-        showToast(`Scaled ${name} to ${replicas} replicas`, 'success');
-        
-        // Закрываем модальное окно
-        bootstrap.Modal.getInstance(document.getElementById('scaleAppModal')).hide();
-        
-        // Обновляем список приложений
-        setTimeout(() => loadApplications(), 1000);
-        
-    } catch (error) {
-        showToast(`Failed to scale: ${error.message}`, 'error');
-    }
-}
-
-// Рестарт приложения
-async function restartApp(namespace, name) {
-    if (!confirm(`Restart application "${name}"?`)) return;
-    
-    try {
-        const response = await fetch(`/api/restart/${namespace}/${name}`, {
-            method: 'POST'
-        });
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || `HTTP ${response.status}`);
-        }
-        
-        showToast(`Application "${name}" restarted`, 'success');
-        
-        // Обновляем список приложений
-        setTimeout(() => loadApplications(), 1000);
-        
-    } catch (error) {
-        showToast(`Failed to restart: ${error.message}`, 'error');
-    }
-}
-
-// Рестарт из модального окна деталей
-async function restartApplication() {
-    if (currentApp) {
-        await restartApp(currentApp.namespace, currentApp.name);
-        bootstrap.Modal.getInstance(document.getElementById('appDetailsModal')).hide();
-    }
-}
-
-// Показать YAML приложения
-async function showAppYAML(namespace, name, type) {
-    try {
-        let url = '';
-        if (type.includes('Deployment')) {
-            url = `/api/deployment/yaml/${namespace}/${name}`;
-        } else {
-            url = `/api/deployments?namespace=${namespace}`;
-        }
-        
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const data = await response.json();
-        const yaml = data.yaml || JSON.stringify(data, null, 2);
-        
-        // Показываем YAML в новом окне
-        const yamlWindow = window.open('', '_blank');
-        yamlWindow.document.write(`
-            <html>
-            <head><title>YAML: ${name}</title>
-            <style>
-                body { font-family: monospace; background: #f5f5f5; padding: 20px; }
-                pre { white-space: pre-wrap; }
-            </style>
-            </head>
-            <body>
-                <h2>YAML: ${name}</h2>
-                <pre>${yaml}</pre>
-            </body>
-            </html>
-        `);
-        
-    } catch (error) {
-        showToast(`Failed to load YAML: ${error.message}`, 'error');
-    }
-}
-
-// Скопировать YAML приложения
-async function copyAppYAML() {
-    const yaml = document.getElementById('app-yaml').textContent;
-    try {
-        await navigator.clipboard.writeText(yaml);
-        showToast('YAML copied to clipboard!', 'success');
-    } catch (err) {
-        showToast('Failed to copy YAML', 'error');
-    }
-}
-
-// Скачать YAML приложения
-function downloadAppYAML() {
-    const name = currentApp?.name || 'application';
-    const yaml = document.getElementById('app-yaml').textContent;
-    
-    const blob = new Blob([yaml], { type: 'text/yaml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${name}.yaml`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-}
-
-// Удаление приложения
-async function deleteApp(namespace, name, type) {
-    if (!confirm(`Delete application "${name}"? This action cannot be undone.`)) return;
-    
-    try {
-        let url = '';
-        let method = 'DELETE';
-        
-        if (type.includes('Deployment')) {
-            url = `/api/deployment/${namespace}/${name}`;
-        } else {
-            showToast(`Deletion for ${type} not implemented yet`, 'warning');
-            return;
-        }
-        
-        const response = await fetch(url, { method });
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || `HTTP ${response.status}`);
-        }
-        
-        showToast(`Application "${name}" deleted`, 'success');
-        
-        // Обновляем список приложений
-        setTimeout(() => loadApplications(), 1000);
-        
-    } catch (error) {
-        showToast(`Failed to delete: ${error.message}`, 'error');
-    }
-}
-
-// Развертывание приложения
-function showDeployModal() {
-    const modal = new bootstrap.Modal(document.getElementById('deployModal'));
-    modal.show();
-}
-
-function selectTemplate(template) {
-    // Убираем выделение со всех шаблонов
-    document.querySelectorAll('.template-card').forEach(card => {
-        card.classList.remove('selected');
-    });
-    
-    // Выделяем выбранный шаблон
-    event.currentTarget.classList.add('selected');
-    
-    // Заполняем форму в зависимости от шаблона
-    const forms = {
-        nginx: {
-            name: 'nginx-web',
-            image: 'nginx:latest',
-            port: 80,
-            replicas: 2
-        },
-        redis: {
-            name: 'redis-cache',
-            image: 'redis:alpine',
-            port: 6379,
-            replicas: 1
-        },
-        postgres: {
-            name: 'postgres-db',
-            image: 'postgres:13',
-            port: 5432,
-            replicas: 1
-        }
-    };
-    
-    const config = forms[template];
-    if (config) {
-        document.getElementById('app-name-input').value = config.name;
-        document.getElementById('app-image-input').value = config.image;
-        document.getElementById('app-port-input').value = config.port;
-        document.getElementById('app-replicas-input').value = config.replicas;
-        document.getElementById('app-type-input').value = 'Deployment';
-    }
-}
-
-async function deployApplication() {
-    const name = document.getElementById('app-name-input').value.trim();
-    const namespace = document.getElementById('app-namespace-input').value;
-    const image = document.getElementById('app-image-input').value.trim();
-    const replicas = parseInt(document.getElementById('app-replicas-input').value) || 2;
-    const port = parseInt(document.getElementById('app-port-input').value) || 80;
-    const type = document.getElementById('app-type-input').value;
-    const envText = document.getElementById('app-env-input').value;
-    
-    // Валидация
-    if (!name || !image) {
-        showToast('Please fill in all required fields', 'error');
-        return;
-    }
-    
-    // Парсинг переменных окружения
-    const envVars = {};
-    envText.split('\n').forEach(line => {
-        const parts = line.trim().split('=');
-        if (parts.length === 2) {
-            envVars[parts[0].trim()] = parts[1].trim();
-        }
-    });
-    
-    // Создаем YAML для развертывания
-    const deploymentYAML = `apiVersion: apps/v1
-kind: ${type}
-metadata:
-  name: ${name}
-  namespace: ${namespace}
-  labels:
-    app: ${name}
-    managed-by: k8s-manager
-spec:
-  replicas: ${replicas}
-  selector:
-    matchLabels:
-      app: ${name}
-  template:
-    metadata:
-      labels:
-        app: ${name}
-    spec:
-      containers:
-      - name: ${name}
-        image: ${image}
-        ports:
-        - containerPort: ${port}
-        ${Object.keys(envVars).length > 0 ? `
-        env:
-${Object.entries(envVars).map(([key, value]) => `        - name: ${key}
-          value: "${value}"`).join('\n')}
-        ` : ''}
-        resources:
-          requests:
-            memory: "64Mi"
-            cpu: "100m"
-          limits:
-            memory: "128Mi"
-            cpu: "200m"`;
-    
-    try {
-        // В реальном приложении здесь будет вызов API для создания деплоймента
-        console.log('Deploying application:', { name, namespace, image, replicas, port, type });
-        
-        // Показываем успешное сообщение
-        showToast(`Application "${name}" deployed successfully!`, 'success');
-        
-        // Закрываем модальное окно
-        bootstrap.Modal.getInstance(document.getElementById('deployModal')).hide();
-        
-        // Сбрасываем форму
-        document.getElementById('deploy-form').reset();
-        
-        // Обновляем список приложений
-        setTimeout(() => loadApplications(), 2000);
-        
-    } catch (error) {
-        showToast(`Failed to deploy: ${error.message}`, 'error');
-    }
-}
-
-// Развертывание sample приложения
-async function deploySampleApp() {
-    const name = `sample-app-${Date.now().toString().slice(-6)}`;
-    const namespace = 'market';
-    const image = 'nginx:latest';
-    
-    try {
-        // Используем API для создания деплоймента
-        const response = await fetch('/api/deployments', {
+        const response = await fetch(`/api/scale/${namespace}/${appName}?replicas=${replicas}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name,
-                namespace,
-                image,
-                replicas: 2,
-                port: 80,
-                type: 'Deployment'
-            })
+            headers: {
+                'Content-Type': 'application/json'
+            }
         });
         
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+        if (response.ok) {
+            const result = await response.json();
+            showToast(result.message || `Scaled ${appName} to ${replicas} replicas`, 'success');
+        } else {
+            // Для демо
+            showToast(`Application ${appName} would be scaled to ${replicas} replicas (demo)`, 'info');
+            
+            // Обновляем локальное состояние для демо
+            const appIndex = AppState.applications.findIndex(a => 
+                a.name === appName && a.namespace === namespace);
+            if (appIndex !== -1) {
+                AppState.applications[appIndex].total_count = replicas;
+                AppState.applications[appIndex].ready_count = replicas;
+                filterApplications();
+                renderApplications();
+            }
         }
         
-        showToast(`Sample application "${name}" deployed!`, 'success');
+        // Закрываем модальное окно
+        const modal = bootstrap.Modal.getInstance(document.getElementById('scaleAppModal'));
+        if (modal) modal.hide();
         
-        // Обновляем список приложений
-        setTimeout(() => loadApplications(), 2000);
+        // Обновляем данные через секунду
+        setTimeout(() => loadInitialData(), 1000);
         
     } catch (error) {
-        // Если API не реализован, показываем информационное сообщение
-        showToast('Deployment API not implemented. Check console for details.', 'info');
-        console.log('Would deploy:', { name, namespace, image });
+        console.error('Scale error:', error);
+        showError(`Failed to scale: ${error.message}`);
     }
 }
 
-// Экспорт приложений
-function exportApplications() {
-    const rows = allApplications.map(app => ({
-        Name: app.name,
-        Namespace: app.namespace,
-        Type: app.type,
-        Status: app.ready_count === app.total_count ? 'Healthy' : 'Unhealthy',
-        Pods: app.ready,
-        Instances: app.instances || app.total_count,
-        Age: app.age
-    }));
+async function restartApp(appName, namespace) {
+    if (!confirm(`Are you sure you want to restart "${appName}"?`)) return;
     
-    const csvContent = [
-        Object.keys(rows[0]).join(','),
-        ...rows.map(row => Object.values(row).join(','))
-    ].join('\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `applications-${currentNamespace}-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-}
-
-// Инициализация графиков
-function initializeCharts() {
-    // Инициализируем графики для вкладки метрик
-    window.cpuChart = new Chart(document.getElementById('cpuChart'), {
-        type: 'line',
-        data: {
-            labels: ['1m', '2m', '3m', '4m', '5m', '6m'],
-            datasets: [{
-                label: 'CPU Usage',
-                data: [25, 30, 28, 35, 40, 38],
-                borderColor: '#28a745',
-                backgroundColor: 'rgba(40, 167, 69, 0.1)',
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { display: false }
-            }
-        }
-    });
-    
-    window.memoryChart = new Chart(document.getElementById('memoryChart'), {
-        type: 'line',
-        data: {
-            labels: ['1m', '2m', '3m', '4m', '5m', '6m'],
-            datasets: [{
-                label: 'Memory Usage',
-                data: [45, 50, 48, 55, 60, 58],
-                borderColor: '#17a2b8',
-                backgroundColor: 'rgba(23, 162, 184, 0.1)',
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { display: false }
-            }
-        }
-    });
-    
-    window.networkChart = new Chart(document.getElementById('networkChart'), {
-        type: 'bar',
-        data: {
-            labels: ['In', 'Out'],
-            datasets: [{
-                label: 'Network Traffic (MB)',
-                data: [120, 85],
-                backgroundColor: ['#007bff', '#6f42c1']
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { display: false }
-            }
-        }
-    });
-}
-
-// Обновление графиков приложения
-function updateAppCharts() {
-    if (window.cpuChart && window.memoryChart && window.networkChart) {
-        // Обновляем данные графиков случайными значениями
-        const newCpuData = Array(6).fill(0).map(() => Math.floor(Math.random() * 40) + 20);
-        const newMemoryData = Array(6).fill(0).map(() => Math.floor(Math.random() * 50) + 30);
-        const newNetworkData = [Math.floor(Math.random() * 150) + 50, Math.floor(Math.random() * 100) + 30];
+    try {
+        const response = await fetch(`/api/restart/${namespace}/${appName}`, {
+            method: 'POST'
+        });
         
-        window.cpuChart.data.datasets[0].data = newCpuData;
-        window.cpuChart.update();
+        if (response.ok) {
+            showToast(`Application ${appName} restarted`, 'success');
+            setTimeout(loadInitialData, 1000);
+        } else {
+            // Для демо
+            showToast(`Application ${appName} restarted (demo)`, 'success');
+            setTimeout(loadInitialData, 2000);
+        }
         
-        window.memoryChart.data.datasets[0].data = newMemoryData;
-        window.memoryChart.update();
-        
-        window.networkChart.data.datasets[0].data = newNetworkData;
-        window.networkChart.update();
+    } catch (error) {
+        console.error('Restart error:', error);
+        showError('Failed to restart application');
     }
 }
 
-// Показать метрики кластера
-function showClusterMetrics() {
-    showToast('Cluster metrics would open in a new tab', 'info');
-    // В реальном приложении здесь будет переход на страницу метрик
+async function deleteApp(appName, namespace) {
+    if (!confirm(`Are you sure you want to delete "${appName}"?\nThis action cannot be undone.`)) return;
+    
+    try {
+        const response = await fetch(`/api/deployment/${namespace}/${appName}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showToast(`Application ${appName} deleted`, 'success');
+            setTimeout(loadInitialData, 1000);
+        } else {
+            // Для демо - удаляем из локального состояния
+            AppState.applications = AppState.applications.filter(app => 
+                !(app.name === appName && app.namespace === namespace));
+            filterApplications();
+            renderApplications();
+            showToast(`Application ${appName} removed from view (demo)`, 'warning');
+        }
+        
+    } catch (error) {
+        console.error('Delete error:', error);
+        showError('Failed to delete application');
+    }
 }
 
-// Вспомогательные функции
+// Утилиты
+function getAppStatus(app) {
+    const ready = app.ready_count || 0;
+    const total = app.total_count || 0;
+    
+    if (total === 0) return 'warning';
+    if (ready === total) return 'healthy';
+    if (ready > 0 && ready < total) return 'progressing';
+    return 'danger';
+}
+
+function getStatusColor(status) {
+    switch (status) {
+        case 'healthy': return 'success';
+        case 'progressing': return 'warning';
+        case 'danger': return 'danger';
+        default: return 'secondary';
+    }
+}
+
 function getAppIcon(type) {
+    if (!type) return 'fa-cube';
     if (type.includes('StatefulSet')) return 'fa-database';
     if (type.includes('DaemonSet')) return 'fa-server';
     return 'fa-layer-group';
 }
 
-function showLoading(show) {
-    // Можно добавить спиннер, если нужно
-    if (show) {
-        // Показываем loading state
-    }
+function truncateText(text, maxLength) {
+    if (!text || text.length <= maxLength) return text || '';
+    return text.substring(0, maxLength) + '...';
 }
 
-function updateLastUpdated() {
-    const now = new Date();
-    // Можно добавить элемент для отображения времени обновления
-}
-
-function showError(message) {
-    console.error(message);
-    showToast(message, 'error');
-}
-
-function showToast(message, type = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `toast-alert alert alert-${type} alert-dismissible fade show`;
-    toast.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 9999;
-        min-width: 300px;
-    `;
-    toast.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
+function formatBytes(bytes) {
+    if (bytes === 0 || !bytes) return '0 B';
     
-    document.body.appendChild(toast);
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
     
-    setTimeout(() => {
-        toast.remove();
-    }, 3000);
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function formatAge(age) {
+    if (!age) return '-';
+    return age;
 }
 
 function debounce(func, wait) {
@@ -1291,19 +1057,250 @@ function debounce(func, wait) {
     };
 }
 
-// Тест подключения
-async function testConnection() {
+async function fetchWithTimeout(resource, options = {}) {
+    const { timeout = 10000 } = options;
+    
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    
     try {
-        const response = await fetch('/api/test');
-        const data = await response.json();
-        
-        if (data.connected) {
-            showToast('Connected to Kubernetes API!', 'success');
-            loadApplications();
-        } else {
-            showToast(`Not connected: ${data.error}`, 'error');
-        }
+        const response = await fetch(resource, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
     } catch (error) {
-        showToast('Connection test failed: ' + error.message, 'error');
+        clearTimeout(id);
+        throw error;
     }
 }
+
+function updateApplicationsCount() {
+    const totalApps = AppState.applications.length;
+    const filteredApps = AppState.filteredApplications.length;
+    
+    const statsElement = document.getElementById('stats-count');
+    if (statsElement) {
+        statsElement.textContent = totalApps === filteredApps ? 
+            totalApps : `${filteredApps}/${totalApps}`;
+    }
+}
+
+function updateLastUpdated() {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const element = document.getElementById('last-updated');
+    if (element) {
+        element.textContent = `Last updated: ${timeStr}`;
+    }
+}
+
+function setupAutoRefresh(interval = CONFIG.refreshInterval) {
+    if (AppState.refreshIntervalId) {
+        clearInterval(AppState.refreshIntervalId);
+    }
+    
+    if (interval > 0) {
+        AppState.refreshIntervalId = setInterval(() => {
+            if (!document.hidden) {
+                loadInitialData();
+            }
+        }, interval);
+    }
+}
+
+function showLoading(show) {
+    const indicator = document.getElementById('loading-indicator');
+    const refreshBtn = document.getElementById('refresh-btn');
+    
+    if (show) {
+        if (indicator) indicator.style.display = 'inline-block';
+        if (refreshBtn) {
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Loading';
+        }
+    } else {
+        if (indicator) indicator.style.display = 'none';
+        if (refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.innerHTML = '<i class="fas fa-sync-alt me-2"></i>Refresh';
+        }
+    }
+}
+
+function showToast(message, type = 'info') {
+    let container = document.querySelector('.toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'toast-container position-fixed top-0 end-0 p-3';
+        document.body.appendChild(container);
+    }
+    
+    const toastId = 'toast-' + Date.now();
+    const toastHtml = `
+        <div id="${toastId}" class="toast align-items-center text-bg-${type}" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="fas ${getToastIcon(type)} me-2"></i>
+                    ${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    `;
+    
+    container.insertAdjacentHTML('beforeend', toastHtml);
+    
+    const toastElement = document.getElementById(toastId);
+    const toast = new bootstrap.Toast(toastElement, { delay: 3000 });
+    toast.show();
+    
+    toastElement.addEventListener('hidden.bs.toast', () => {
+        toastElement.remove();
+    });
+}
+
+function showError(message) {
+    showToast(message, 'danger');
+}
+
+function getToastIcon(type) {
+    switch (type) {
+        case 'success': return 'fa-check-circle';
+        case 'danger': return 'fa-exclamation-circle';
+        case 'warning': return 'fa-exclamation-triangle';
+        default: return 'fa-info-circle';
+    }
+}
+
+function createEmptyState() {
+    return `
+        <div class="col-12">
+            <div class="empty-state">
+                <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">No applications found</h5>
+                <p class="text-muted mb-4">Try changing your search or filters</p>
+                <button class="btn btn-primary" onclick="clearSearch()">
+                    <i class="fas fa-times me-2"></i>Clear Search
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function createEmptyTableState() {
+    return `
+        <tr>
+            <td colspan="8" class="text-center py-5">
+                <div class="empty-state">
+                    <i class="fas fa-search fa-2x text-muted mb-3"></i>
+                    <p class="text-muted">No applications found</p>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+function clearSearch() {
+    const searchInput = document.getElementById('search-apps');
+    if (searchInput) {
+        searchInput.value = '';
+        handleSearch();
+    }
+}
+
+function updateSortIndicator() {
+    document.querySelectorAll('.sort-indicator').forEach(el => el.remove());
+    
+    const currentSort = document.querySelector(`[data-sort="${AppState.sortBy}"]`);
+    if (currentSort) {
+        const icon = AppState.sortOrder === 'asc' ? 'fa-sort-up' : 'fa-sort-down';
+        currentSort.innerHTML += ` <i class="fas ${icon} sort-indicator"></i>`;
+    }
+}
+
+// Демо-данные
+function getDemoApplications() {
+    return [
+        {
+            name: 'api-gateway',
+            namespace: 'market',
+            type: 'Deployment',
+            ready_count: 3,
+            total_count: 3,
+            age: '2d',
+            metrics: {
+                cpu: 150,
+                memory: 256 * 1024 * 1024,
+                cpuPercent: 25,
+                memoryPercent: 30,
+                cpuUsage: '150m',
+                memoryUsage: '256Mi'
+            }
+        },
+        {
+            name: 'redis-cache',
+            namespace: 'market',
+            type: 'StatefulSet',
+            ready_count: 1,
+            total_count: 1,
+            age: '5d',
+            metrics: {
+                cpu: 80,
+                memory: 512 * 1024 * 1024,
+                cpuPercent: 15,
+                memoryPercent: 50,
+                cpuUsage: '80m',
+                memoryUsage: '512Mi'
+            }
+        },
+        {
+            name: 'postgres-db',
+            namespace: 'default',
+            type: 'StatefulSet',
+            ready_count: 1,
+            total_count: 1,
+            age: '7d',
+            metrics: {
+                cpu: 120,
+                memory: 1024 * 1024 * 1024,
+                cpuPercent: 20,
+                memoryPercent: 60,
+                cpuUsage: '120m',
+                memoryUsage: '1Gi'
+            }
+        }
+    ];
+}
+
+function getDemoClusterMetrics() {
+    return {
+        cpu_percent: 45,
+        memory_percent: 65,
+        total_cpu_used: '1250m',
+        total_memory_used: '5.2Gi',
+        total_cpu_allocatable: '2000m',
+        total_memory_allocatable: '8Gi',
+        node_count: 3
+    };
+}
+
+// Глобальные функции для HTML
+window.clearSearch = clearSearch;
+window.confirmScale = confirmScale;
+window.testConnection = async function() {
+    try {
+        const response = await fetch('/api/health');
+        const data = await response.json();
+        
+        if (data.k8s) {
+            showToast('Connected to Kubernetes API', 'success');
+            loadInitialData();
+        } else {
+            showToast('Kubernetes API not available', 'warning');
+        }
+    } catch (error) {
+        showToast('Connection test failed: ' + error.message, 'danger');
+    }
+};

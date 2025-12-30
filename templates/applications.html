@@ -8,6 +8,22 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .toast-container {
+            z-index: 9999;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-indicator.healthy { background-color: #28a745; }
+        .status-indicator.warning { background-color: #ffc107; }
+        .status-indicator.danger { background-color: #dc3545; }
+        .status-indicator.progressing { background-color: #17a2b8; }
+    </style>
 </head>
 <body>
     <!-- Навигация -->
@@ -46,30 +62,34 @@
                             <i class="fas fa-cogs me-1"></i>Configuration
                         </a>
                     </li>
+
                 </ul>
                 <div class="navbar-text">
                     <span class="badge bg-success me-2">
                         <i class="fas fa-plug"></i> Connected
                     </span>
-                    <span id="current-namespace" class="badge bg-info">market</span>
+                    <span id="current-namespace" class="badge bg-info">all</span>
+                    <span id="auto-refresh-status" class="badge bg-success ms-2">
+                        <i class="fas fa-sync-alt"></i> Auto: 30s
+                    </span>
                 </div>
             </div>
         </div>
     </nav>
 
     <!-- Основной контент -->
-    <div class="container-fluid mt-4">
+    <div class="container-fluid mt-3">
         <div class="row">
-            <!-- Боковая панель фильтров -->
-            <div class="col-md-3 col-lg-2">
-                <div class="card sidebar-card">
+            <!-- Боковая панель -->
+            <div class="col-lg-2 col-md-3 mb-3">
+                <div class="card mb-3">
                     <div class="card-header">
-                        <h6><i class="fas fa-filter me-2"></i>Filters & Actions</h6>
+                        <h6 class="mb-0"><i class="fas fa-filter me-2"></i>Filters</h6>
                     </div>
                     <div class="card-body">
-                        <!-- Выбор namespace -->
+                        <!-- Namespace -->
                         <div class="mb-3">
-                            <label class="form-label"><i class="fas fa-layer-group me-1"></i>Namespace</label>
+                            <label class="form-label">Namespace</label>
                             <select id="namespace-select" class="form-select">
                                 <option value="all" selected>All Namespaces</option>
                                 <option value="market">market</option>
@@ -78,588 +98,339 @@
                             </select>
                         </div>
                         
-                        <!-- Тип приложения -->
+                        <!-- Status Filters -->
                         <div class="mb-3">
-                            <label class="form-label"><i class="fas fa-tag me-1"></i>Application Type</label>
+                            <label class="form-label">Status</label>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="Deployment" id="type-deployment" checked>
-                                <label class="form-check-label" for="type-deployment">
-                                    <i class="fas fa-layer-group me-1 text-primary"></i>Deployments
-                                </label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="StatefulSet" id="type-statefulset" checked>
-                                <label class="form-check-label" for="type-statefulset">
-                                    <i class="fas fa-database me-1 text-info"></i>StatefulSets
-                                </label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="DaemonSet" id="type-daemonset" checked>
-                                <label class="form-check-label" for="type-daemonset">
-                                    <i class="fas fa-server me-1 text-warning"></i>DaemonSets
-                                </label>
-                            </div>
-                        </div>
-                        
-                        <!-- Статус -->
-                        <div class="mb-3">
-                            <label class="form-label"><i class="fas fa-heartbeat me-1"></i>Health Status</label>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="healthy" id="status-healthy" checked>
+                                <input class="form-check-input" type="checkbox" name="status-filter" value="healthy" id="status-healthy" checked>
                                 <label class="form-check-label" for="status-healthy">
-                                    <span class="status-dot healthy"></span> Healthy
+                                    <span class="badge bg-success me-1">&nbsp;</span> Healthy
                                 </label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="unhealthy" id="status-unhealthy" checked>
-                                <label class="form-check-label" for="status-unhealthy">
-                                    <span class="status-dot unhealthy"></span> Unhealthy
+                                <input class="form-check-input" type="checkbox" name="status-filter" value="warning" id="status-warning" checked>
+                                <label class="form-check-label" for="status-warning">
+                                    <span class="badge bg-warning me-1">&nbsp;</span> Warning
                                 </label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="progressing" id="status-progressing" checked>
+                                <input class="form-check-input" type="checkbox" name="status-filter" value="danger" id="status-danger" checked>
+                                <label class="form-check-label" for="status-danger">
+                                    <span class="badge bg-danger me-1">&nbsp;</span> Critical
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="status-filter" value="progressing" id="status-progressing" checked>
                                 <label class="form-check-label" for="status-progressing">
-                                    <span class="status-dot progressing"></span> Progressing
+                                    <span class="badge bg-info me-1">&nbsp;</span> Progressing
                                 </label>
                             </div>
                         </div>
                         
-                        <!-- Поиск -->
+                        <!-- Auto Refresh -->
                         <div class="mb-3">
-                            <label class="form-label"><i class="fas fa-search me-1"></i>Search</label>
-                            <input type="text" id="search-apps" class="form-control" placeholder="Search applications...">
+                            <label class="form-label">Auto Refresh</label>
+                            <select id="refresh-interval" class="form-select">
+                                <option value="0">Off</option>
+                                <option value="5">5 seconds</option>
+                                <option value="15">15 seconds</option>
+                                <option value="30" selected>30 seconds</option>
+                                <option value="60">1 minute</option>
+                            </select>
                         </div>
                         
-                        <!-- Быстрые действия -->
-                        <div class="d-grid gap-2">
-                            <button id="refresh-btn" class="btn btn-outline-primary">
-                                <i class="fas fa-sync-alt me-2"></i>Refresh
-                            </button>
-                            <button class="btn btn-success" onclick="deploySampleApp()">
-                                <i class="fas fa-rocket me-2"></i>Deploy Sample
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <!-- Статистика -->
-                    <div class="card-footer">
-                        <small class="text-muted">
-                            <i class="fas fa-info-circle me-1"></i>
-                            <span id="stats-count">0</span> applications
-                        </small>
+                        <button id="refresh-btn" class="btn btn-primary w-100">
+                            <i class="fas fa-sync-alt me-2"></i>Refresh Now
+                        </button>
                     </div>
                 </div>
                 
-                <!-- Кластерная информация -->
-                <div class="card mt-3">
+                <!-- Cluster Stats -->
+                <div class="card">
                     <div class="card-header">
-                        <h6><i class="fas fa-chart-pie me-2"></i>Cluster Overview</h6>
+                        <h6 class="mb-0"><i class="fas fa-server me-2"></i>Cluster</h6>
                     </div>
                     <div class="card-body">
                         <div class="mb-2">
-                            <small>Total Applications:</small>
                             <div class="d-flex justify-content-between">
-                                <span id="total-apps">0</span>
-                                <span class="badge bg-primary" id="healthy-apps">0 healthy</span>
+                                <small>Applications:</small>
+                                <small class="fw-bold" id="stats-count">0</small>
                             </div>
                         </div>
                         <div class="mb-2">
-                            <small>Resource Usage:</small>
-                            <div class="progress mb-1">
-                                <div class="progress-bar bg-success" id="cpu-usage" style="width: 25%">25%</div>
-                            </div>
-                            <div class="progress">
-                                <div class="progress-bar bg-info" id="memory-usage" style="width: 40%">40%</div>
+                            <div class="d-flex justify-content-between">
+                                <small>Total Pods:</small>
+                                <small class="fw-bold" id="stats-pods">0</small>
                             </div>
                         </div>
-                        <div class="mt-3">
-                            <button class="btn btn-sm btn-outline-secondary w-100" onclick="showClusterMetrics()">
-                                <i class="fas fa-chart-line me-1"></i>View Metrics
-                            </button>
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>Nodes:</small>
+                                <small class="fw-bold" id="stats-nodes">0</small>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Основная область с приложениями -->
-            <div class="col-md-9 col-lg-10">
+            <!-- Основная область -->
+            <div class="col-lg-10 col-md-9">
+                <!-- Заголовок -->
                 <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h2>
-                        <i class="fas fa-th-large me-2"></i>Applications Overview
-                    </h2>
-                    <div class="btn-group">
-                        <button class="btn btn-outline-secondary" onclick="toggleViewMode()">
-                            <i class="fas fa-th-large me-1"></i>Grid
-                        </button>
-                        <button class="btn btn-outline-secondary" onclick="toggleViewMode()">
-                            <i class="fas fa-list me-1"></i>List
-                        </button>
-                        <button class="btn btn-outline-primary" onclick="exportApplications()">
-                            <i class="fas fa-download me-1"></i>Export
-                        </button>
+                    <div>
+                        <h2 class="mb-0">
+                            <i class="fas fa-th-large me-2"></i>Applications
+                        </h2>
+                        <p class="text-muted mb-0">
+                            <small id="last-updated">Last updated: Just now</small>
+                            <span class="ms-3" id="loading-indicator" style="display: none;">
+                                <i class="fas fa-spinner fa-spin text-primary"></i>
+                                <small class="text-primary">Loading...</small>
+                            </span>
+                        </p>
+                    </div>
+                    
+                    <div class="d-flex align-items-center gap-2">
+                        <!-- Поиск -->
+                        <div class="input-group" style="width: 250px;">
+                            <span class="input-group-text">
+                                <i class="fas fa-search"></i>
+                            </span>
+                            <input type="text" id="search-apps" class="form-control" placeholder="Search applications...">
+                        </div>
+                        
+                        <!-- Вид -->
+                        <div class="btn-group" role="group">
+                            <input type="radio" class="btn-check" name="view-mode" id="view-grid" value="grid" autocomplete="off" checked>
+                            <label class="btn btn-outline-primary" for="view-grid" title="Grid View">
+                                <i class="fas fa-th-large"></i>
+                            </label>
+                            <input type="radio" class="btn-check" name="view-mode" id="view-table" value="table" autocomplete="off">
+                            <label class="btn btn-outline-primary" for="view-table" title="Table View">
+                                <i class="fas fa-list"></i>
+                            </label>
+                        </div>
+                        
+                        <!-- Сортировка -->
+                        <div class="dropdown">
+                            <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-sort me-1"></i>Sort
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item sort-option" href="#" data-sort="name">Name</a></li>
+                                <li><a class="dropdown-item sort-option" href="#" data-sort="namespace">Namespace</a></li>
+                                <li><a class="dropdown-item sort-option" href="#" data-sort="cpu">CPU Usage</a></li>
+                                <li><a class="dropdown-item sort-option" href="#" data-sort="memory">Memory Usage</a></li>
+                                <li><a class="dropdown-item sort-option" href="#" data-sort="pods">Pod Count</a></li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Статус бар -->
+                <!-- Метрики кластера -->
                 <div class="row mb-4">
-                    <div class="col-md-3">
-                        <div class="card stat-card bg-success bg-opacity-10">
+                    <!-- CPU -->
+                    <div class="col-xl-3 col-lg-6 mb-3">
+                        <div class="card metric-card">
                             <div class="card-body">
-                                <h5><i class="fas fa-heartbeat text-success me-2"></i><span id="healthy-count">0</span></h5>
-                                <small class="text-muted">Healthy</small>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="card-title text-muted mb-1">
+                                            <i class="fas fa-microchip text-success me-1"></i>CPU Usage
+                                        </h6>
+                                        <h4 class="mb-0" id="cpu-usage-value">0%</h4>
+                                        <small class="text-muted" id="cpu-usage-detail">0m / 0m</small>
+                                    </div>
+                                    <div class="metric-chart-small" id="cpu-chart-small"></div>
+                                </div>
+                                <div class="progress mt-2" style="height: 6px;">
+                                    <div class="progress-bar bg-success" id="cpu-progress" style="width: 0%"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="card stat-card bg-warning bg-opacity-10">
+                    
+                    <!-- Memory -->
+                    <div class="col-xl-3 col-lg-6 mb-3">
+                        <div class="card metric-card">
                             <div class="card-body">
-                                <h5><i class="fas fa-exclamation-triangle text-warning me-2"></i><span id="warning-count">0</span></h5>
-                                <small class="text-muted">Warnings</small>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="card-title text-muted mb-1">
+                                            <i class="fas fa-memory text-info me-1"></i>Memory Usage
+                                        </h6>
+                                        <h4 class="mb-0" id="memory-usage-value">0%</h4>
+                                        <small class="text-muted" id="memory-usage-detail">0 GiB / 0 GiB</small>
+                                    </div>
+                                    <div class="metric-chart-small" id="memory-chart-small"></div>
+                                </div>
+                                <div class="progress mt-2" style="height: 6px;">
+                                    <div class="progress-bar bg-info" id="memory-progress" style="width: 0%"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="card stat-card bg-danger bg-opacity-10">
+                    
+                    <!-- Pods -->
+                    <div class="col-xl-3 col-lg-6 mb-3">
+                        <div class="card metric-card">
                             <div class="card-body">
-                                <h5><i class="fas fa-times-circle text-danger me-2"></i><span id="error-count">0</span></h5>
-                                <small class="text-muted">Errors</small>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="card-title text-muted mb-1">
+                                            <i class="fas fa-cube text-primary me-1"></i>Pod Status
+                                        </h6>
+                                        <h4 class="mb-0" id="pod-status-value">0/0</h4>
+                                        <small class="text-muted">Ready / Total</small>
+                                    </div>
+                                    <div class="pod-status-chart" id="pod-chart-small"></div>
+                                </div>
+                                <div class="row mt-2 text-center">
+                                    <div class="col-4">
+                                        <small class="text-success fw-bold" id="ready-pods">0</small>
+                                        <br><small class="text-muted">Ready</small>
+                                    </div>
+                                    <div class="col-4">
+                                        <small class="text-warning fw-bold" id="pending-pods">0</small>
+                                        <br><small class="text-muted">Pending</small>
+                                    </div>
+                                    <div class="col-4">
+                                        <small class="text-danger fw-bold" id="failed-pods">0</small>
+                                        <br><small class="text-muted">Failed</small>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="card stat-card bg-info bg-opacity-10">
+                    
+                    <!-- Applications Count -->
+                    <div class="col-xl-3 col-lg-6 mb-3">
+                        <div class="card metric-card">
                             <div class="card-body">
-                                <h5><i class="fas fa-cube text-info me-2"></i><span id="pods-count">0</span></h5>
-                                <small class="text-muted">Total Pods</small>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="card-title text-muted mb-1">
+                                            <i class="fas fa-th-large text-secondary me-1"></i>Applications
+                                        </h6>
+                                        <h4 class="mb-0" id="apps-count">0</h4>
+                                        <small class="text-muted">Total count</small>
+                                    </div>
+                                    <div class="display-4 text-secondary">
+                                        <i class="fas fa-server"></i>
+                                    </div>
+                                </div>
+                                <div class="mt-3">
+                                    <button class="btn btn-sm btn-outline-secondary w-100" onclick="testConnection()">
+                                        <i class="fas fa-plug me-1"></i>Test Connection
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                <!-- View Toggle -->
-                <div class="mb-3">
-                    <div class="btn-group" role="group">
-                        <input type="radio" class="btn-check" name="view-mode" id="view-grid" autocomplete="off" checked>
-                        <label class="btn btn-outline-primary" for="view-grid" onclick="setViewMode('grid')">
-                            <i class="fas fa-th-large me-1"></i>Grid View
-                        </label>
-                        <input type="radio" class="btn-check" name="view-mode" id="view-list" autocomplete="off">
-                        <label class="btn btn-outline-primary" for="view-list" onclick="setViewMode('list')">
-                            <i class="fas fa-list me-1"></i>List View
-                        </label>
-                        <input type="radio" class="btn-check" name="view-mode" id="view-compact" autocomplete="off">
-                        <label class="btn btn-outline-primary" for="view-compact" onclick="setViewMode('compact')">
-                            <i class="fas fa-grip-horizontal me-1"></i>Compact
-                        </label>
                     </div>
                 </div>
 
                 <!-- Список приложений (Grid View) -->
                 <div id="applications-grid" class="row">
                     <!-- Applications will be loaded here as cards -->
-                    <div class="col-12 text-center py-5">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <p class="mt-2 text-muted">Loading applications...</p>
-                    </div>
                 </div>
 
-                <!-- Таблица приложений (List View - hidden by default) -->
-                <div id="applications-list" class="card" style="display: none;">
-                    <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-list me-2"></i>Applications List</h5>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Namespace</th>
-                                        <th>Type</th>
-                                        <th>Status</th>
-                                        <th>Pods</th>
-                                        <th>CPU</th>
-                                        <th>Memory</th>
-                                        <th>Age</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="applications-table-body">
-                                    <!-- Applications will be loaded here -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                <!-- Таблица приложений (Table View - hidden by default) -->
+                <div id="applications-table" class="table-container" style="display: none;">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Application</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Pods</th>
+                                <th>CPU</th>
+                                <th>Memory</th>
+                                <th>Age</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="applications-table-body">
+                            <!-- Applications will be loaded here as table rows -->
+                        </tbody>
+                    </table>
                 </div>
-
-                <!-- Пагинация -->
-                <nav aria-label="Page navigation" class="mt-4">
-                    <ul class="pagination justify-content-center" id="pagination">
-                        <li class="page-item disabled">
-                            <a class="page-link" href="#" tabindex="-1">Previous</a>
-                        </li>
-                        <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                        <li class="page-item"><a class="page-link" href="#">2</a></li>
-                        <li class="page-item"><a class="page-link" href="#">3</a></li>
-                        <li class="page-item">
-                            <a class="page-link" href="#">Next</a>
-                        </li>
-                    </ul>
-                </nav>
             </div>
         </div>
     </div>
 
-    <!-- Модальное окно для деталей приложения -->
-    <div class="modal fade" id="appDetailsModal" tabindex="-1">
-        <div class="modal-dialog modal-xl">
+    <!-- Модальное окно метрик приложения -->
+    <div class="modal fade" id="appMetricsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">
-                        <i class="fas fa-info-circle me-2"></i>
-                        Application: <span id="app-details-name"></span>
+                        <i class="fas fa-chart-line me-2"></i>
+                        Metrics: <span id="metrics-app-name"></span>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <!-- Навигация по табам -->
-                    <ul class="nav nav-tabs" id="appDetailsTabs">
-                        <li class="nav-item">
-                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#app-overview">Overview</button>
-                        </li>
-                        <li class="nav-item">
-                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#app-pods">Pods</button>
-                        </li>
-                        <li class="nav-item">
-                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#app-services">Services</button>
-                        </li>
-                        <li class="nav-item">
-                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#app-config">Configuration</button>
-                        </li>
-                        <li class="nav-item">
-                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#app-metrics">Metrics</button>
-                        </li>
-                    </ul>
-                    
-                    <!-- Контент табов -->
-                    <div class="tab-content mt-3">
-                        <!-- Обзор -->
-                        <div class="tab-pane fade show active" id="app-overview">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <h6 class="mb-0"><i class="fas fa-info me-2"></i>Basic Information</h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <table class="table table-sm">
-                                                <tr><th>Name:</th><td id="app-name"></td></tr>
-                                                <tr><th>Namespace:</th><td id="app-namespace"></td></tr>
-                                                <tr><th>Type:</th><td id="app-type"></td></tr>
-                                                <tr><th>Status:</th><td id="app-status"></td></tr>
-                                                <tr><th>Created:</th><td id="app-created"></td></tr>
-                                                <tr><th>Labels:</th><td id="app-labels"></td></tr>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <h6 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Resource Status</h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <div class="mb-3">
-                                                <label>Pods: <span id="app-pods-ready"></span>/<span id="app-pods-total"></span></label>
-                                                <div class="progress">
-                                                    <div class="progress-bar" id="app-pods-progress" style="width: 0%"></div>
-                                                </div>
-                                            </div>
-                                            <div class="mb-3">
-                                                <label>CPU Usage:</label>
-                                                <div class="progress">
-                                                    <div class="progress-bar bg-success" id="app-cpu-progress" style="width: 0%"></div>
-                                                </div>
-                                            </div>
-                                            <div class="mb-3">
-                                                <label>Memory Usage:</label>
-                                                <div class="progress">
-                                                    <div class="progress-bar bg-info" id="app-memory-progress" style="width: 0%"></div>
-                                                </div>
-                                            </div>
-                                            <div class="mt-3">
-                                                <button class="btn btn-sm btn-outline-primary w-100" onclick="scaleApplication()">
-                                                    <i class="fas fa-expand-alt me-1"></i>Scale Application
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Pods -->
-                        <div class="tab-pane fade" id="app-pods">
-                            <div class="table-responsive">
-                                <table class="table table-sm">
-                                    <thead>
-                                        <tr>
-                                            <th>Pod Name</th>
-                                            <th>Status</th>
-                                            <th>Ready</th>
-                                            <th>Restarts</th>
-                                            <th>Age</th>
-                                            <th>Node</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="app-pods-list">
-                                        <!-- Pods will be loaded here -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                        
-                        <!-- Services -->
-                        <div class="tab-pane fade" id="app-services">
-                            <div class="table-responsive">
-                                <table class="table table-sm">
-                                    <thead>
-                                        <tr>
-                                            <th>Service Name</th>
-                                            <th>Type</th>
-                                            <th>Cluster IP</th>
-                                            <th>Ports</th>
-                                            <th>Age</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="app-services-list">
-                                        <!-- Services will be loaded here -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                        
-                        <!-- Конфигурация -->
-                        <div class="tab-pane fade" id="app-config">
+                    <div class="row mb-4">
+                        <div class="col-md-6">
                             <div class="card">
-                                <div class="card-header">
-                                    <h6 class="mb-0"><i class="fas fa-code me-2"></i>YAML Configuration</h6>
-                                </div>
                                 <div class="card-body">
-                                    <pre id="app-yaml" class="yaml-pre"></pre>
-                                </div>
-                                <div class="card-footer">
-                                    <button class="btn btn-sm btn-outline-primary" onclick="copyAppYAML()">
-                                        <i class="fas fa-copy me-1"></i>Copy YAML
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-success" onclick="downloadAppYAML()">
-                                        <i class="fas fa-download me-1"></i>Download
-                                    </button>
+                                    <h6 class="card-title text-muted mb-2">CPU Usage</h6>
+                                    <h3 class="mb-0 text-success" id="metrics-cpu">0m</h3>
                                 </div>
                             </div>
                         </div>
-                        
-                        <!-- Метрики -->
-                        <div class="tab-pane fade" id="app-metrics">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <h6 class="mb-0"><i class="fas fa-microchip me-2"></i>CPU Usage</h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <canvas id="cpuChart" height="200"></canvas>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <h6 class="mb-0"><i class="fas fa-memory me-2"></i>Memory Usage</h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <canvas id="memoryChart" height="200"></canvas>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row mt-3">
-                                <div class="col-md-12">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <h6 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>Network Traffic</h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <canvas id="networkChart" height="150"></canvas>
-                                        </div>
-                                    </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6 class="card-title text-muted mb-2">Memory Usage</h6>
+                                    <h3 class="mb-0 text-info" id="metrics-memory">0Mi</h3>
                                 </div>
                             </div>
                         </div>
                     </div>
+                    
+                    <h6 class="mb-3">Containers</h6>
+                    <div class="list-group" id="metrics-containers">
+                        <div class="list-group-item text-muted text-center">
+                            No container data available
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
+                    <small class="text-muted me-auto">
+                        Namespace: <span id="metrics-namespace"></span>
+                    </small>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" onclick="restartApplication()">
-                        <i class="fas fa-redo me-1"></i>Restart
-                    </button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Модальное окно для масштабирования -->
+    <!-- Модальное окно масштабирования -->
     <div class="modal fade" id="scaleAppModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">
-                        <i class="fas fa-expand-alt me-2"></i>Scale Application
+                        <i class="fas fa-expand-alt me-2"></i>
+                        Scale: <span id="scale-app-name"></span>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p>Application: <strong id="scale-app-name"></strong></p>
-                    <p>Current replicas: <span class="badge bg-info" id="scale-current-replicas">1</span></p>
+                    <p class="text-muted">
+                        Current replicas: <span id="scale-current-replicas" class="fw-bold">1</span>
+                    </p>
                     
                     <div class="mb-3">
-                        <label class="form-label">Number of replicas:</label>
-                        <input type="range" class="form-range" min="0" max="10" step="1" id="scale-app-slider">
-                        <div class="d-flex justify-content-between">
-                            <span>0</span>
-                            <span id="scale-app-value" class="fw-bold">1</span>
-                            <span>10</span>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Or enter manually:</label>
-                        <input type="number" class="form-control" id="scale-app-input" min="0" max="10" value="1">
-                    </div>
-                    
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle me-2"></i>
-                        Scaling will adjust the number of pods running for this application.
+                        <label class="form-label">Replicas: <span id="scale-replicas-display" class="fw-bold">1</span></label>
+                        <input type="range" class="form-range" id="scale-replicas-slider" min="1" max="20" value="1">
+                        <input type="number" class="form-control mt-2" id="scale-replicas-input" min="1" max="20" value="1">
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" onclick="confirmScaleApp()">Scale</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Модальное окно для развертывания -->
-    <div class="modal fade" id="deployModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="fas fa-rocket me-2"></i>Deploy New Application
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-4">
-                        <h6>Quick Deploy Templates</h6>
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="card template-card" onclick="selectTemplate('nginx')">
-                                    <div class="card-body text-center">
-                                        <i class="fas fa-globe fa-2x text-success mb-2"></i>
-                                        <h6>NGINX Web Server</h6>
-                                        <small class="text-muted">Simple web server</small>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="card template-card" onclick="selectTemplate('redis')">
-                                    <div class="card-body text-center">
-                                        <i class="fas fa-database fa-2x text-danger mb-2"></i>
-                                        <h6>Redis Cache</h6>
-                                        <small class="text-muted">In-memory data store</small>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="card template-card" onclick="selectTemplate('postgres')">
-                                    <div class="card-body text-center">
-                                        <i class="fas fa-server fa-2x text-info mb-2"></i>
-                                        <h6>PostgreSQL</h6>
-                                        <small class="text-muted">Relational database</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <h6>Custom Deployment</h6>
-                    <form id="deploy-form">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Application Name *</label>
-                                    <input type="text" class="form-control" id="app-name-input" required 
-                                           placeholder="my-application">
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Namespace *</label>
-                                    <select class="form-select" id="app-namespace-input" required>
-                                        <option value="market" selected>market</option>
-                                        <option value="default">default</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Docker Image *</label>
-                            <input type="text" class="form-control" id="app-image-input" required 
-                                   placeholder="nginx:latest">
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">Replicas</label>
-                                    <input type="number" class="form-control" id="app-replicas-input" 
-                                           value="2" min="1" max="10">
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">Port</label>
-                                    <input type="number" class="form-control" id="app-port-input" 
-                                           value="80" min="1" max="65535">
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">Application Type</label>
-                                    <select class="form-select" id="app-type-input">
-                                        <option value="Deployment">Deployment</option>
-                                        <option value="StatefulSet">StatefulSet</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Environment Variables (key=value, one per line)</label>
-                            <textarea class="form-control" id="app-env-input" rows="3" 
-                                      placeholder="ENV=production&#10;LOG_LEVEL=info"></textarea>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" onclick="deployApplication()">Deploy</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmScale()">Scale</button>
                 </div>
             </div>
         </div>
@@ -667,7 +438,6 @@
 
     <!-- Скрипты -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/js/applications.js"></script>
 </body>
 </html>

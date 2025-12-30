@@ -1,13 +1,28 @@
 :root {
-    --color-healthy: #28a745;
-    --color-unhealthy: #dc3545;
-    --color-progressing: #ffc107;
+    --color-primary: #007bff;
+    --color-secondary: #6c757d;
+    --color-success: #28a745;
+    --color-danger: #dc3545;
     --color-warning: #ffc107;
+    --color-info: #17a2b8;
+    --color-dark: #343a40;
+    --color-light: #f8f9fa;
+    --color-gray-100: #f8f9fa;
+    --color-gray-200: #e9ecef;
+    --color-gray-300: #dee2e6;
+    --color-gray-400: #ced4da;
+    --color-gray-500: #adb5bd;
+    --color-gray-600: #6c757d;
+    --color-gray-700: #495057;
+    --color-gray-800: #343a40;
+    --color-gray-900: #212529;
 }
 
 body {
     font-family: 'Inter', sans-serif;
     background-color: #f8f9fa;
+    font-size: 0.875rem;
+    min-height: 100vh;
 }
 
 .navbar-brand {
@@ -15,243 +30,410 @@ body {
     font-size: 1.5rem;
 }
 
-.sidebar-card {
-    box-shadow: 0 2px 4px rgba(0,0,0,.1);
-    border: none;
-    border-radius: 10px;
+.navbar-brand i {
+    color: #326ce5;
 }
 
-.sidebar-card .card-header {
-    background-color: #f8f9fa;
-    border-bottom: 1px solid #eee;
+/* Cards */
+.card {
+    border: 1px solid var(--color-gray-300);
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: all 0.2s ease;
+    margin-bottom: 1rem;
+}
+
+.card:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.card-header {
+    background-color: var(--color-gray-100);
+    border-bottom: 1px solid var(--color-gray-300);
     font-weight: 600;
+    padding: 0.75rem 1rem;
 }
 
-.stat-card {
+.card-header h5, .card-header h6 {
+    margin-bottom: 0;
+}
+
+/* Metric Cards */
+.metric-card {
     border: none;
     border-radius: 10px;
-    transition: transform 0.2s;
-    cursor: pointer;
+    transition: transform 0.2s ease;
+    height: 100%;
 }
 
-.stat-card:hover {
+.metric-card:hover {
     transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.status-dot {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    margin-right: 8px;
+.metric-card .card-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-.status-dot.healthy { background-color: var(--color-healthy); }
-.status-dot.unhealthy { background-color: var(--color-unhealthy); }
-.status-dot.progressing { background-color: var(--color-progressing); }
+.metric-card h4 {
+    font-weight: 700;
+    margin: 0.25rem 0;
+}
 
-/* Карточки приложений */
+.metric-chart-small {
+    width: 60px;
+    height: 40px;
+}
+
+.pod-status-chart {
+    width: 50px;
+    height: 50px;
+    position: relative;
+}
+
+/* Application Cards */
 .app-card {
     border: none;
-    border-radius: 10px;
+    border-radius: 8px;
     transition: all 0.3s ease;
     height: 100%;
-    box-shadow: 0 2px 4px rgba(0,0,0,.1);
-}
-
-.app-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 5px 15px rgba(0,0,0,.1);
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    border-left: 4px solid var(--color-gray-400);
 }
 
 .app-card.healthy {
-    border-left: 4px solid var(--color-healthy);
-}
-
-.app-card.unhealthy {
-    border-left: 4px solid var(--color-unhealthy);
-}
-
-.app-card.progressing {
-    border-left: 4px solid var(--color-progressing);
+    border-left-color: var(--color-success);
 }
 
 .app-card.warning {
-    border-left: 4px solid var(--color-warning);
+    border-left-color: var(--color-warning);
+}
+
+.app-card.danger {
+    border-left-color: var(--color-danger);
+}
+
+.app-card.progressing {
+    border-left-color: var(--color-info);
+}
+
+.app-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.1);
 }
 
 .app-icon {
-    font-size: 1.5rem;
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 10px;
-    margin-right: 15px;
+    margin-right: 12px;
+    flex-shrink: 0;
 }
 
-.app-icon.deployment { background-color: #e7f3ff; color: #007bff; }
-.app-icon.statefulset { background-color: #e6f7f7; color: #17a2b8; }
-.app-icon.daemonset { background-color: #fff8e6; color: #ffc107; }
+.app-icon.deployment {
+    background-color: rgba(0, 123, 255, 0.1);
+    color: var(--color-primary);
+}
+
+.app-icon.statefulset {
+    background-color: rgba(23, 162, 184, 0.1);
+    color: var(--color-info);
+}
+
+.app-icon.daemonset {
+    background-color: rgba(255, 193, 7, 0.1);
+    color: var(--color-warning);
+}
 
 .app-status {
     position: absolute;
     top: 10px;
     right: 10px;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     padding: 2px 8px;
     border-radius: 10px;
+    font-weight: 600;
 }
 
-.status-healthy { background-color: #d4edda; color: #155724; }
-.status-unhealthy { background-color: #f8d7da; color: #721c24; }
-.status-progressing { background-color: #fff3cd; color: #856404; }
-.status-warning { background-color: #fff3cd; color: #856404; }
+.status-healthy {
+    background-color: rgba(40, 167, 69, 0.1);
+    color: var(--color-success);
+}
 
-/* Прогресс бары */
+.status-warning {
+    background-color: rgba(255, 193, 7, 0.1);
+    color: var(--color-warning);
+}
+
+.status-danger {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: var(--color-danger);
+}
+
+.status-progressing {
+    background-color: rgba(23, 162, 184, 0.1);
+    color: var(--color-info);
+}
+
+/* Resource Metrics */
+.resource-metric {
+    margin: 0.5rem 0;
+}
+
+.resource-label {
+    font-size: 0.75rem;
+    color: var(--color-gray-600);
+    margin-bottom: 0.25rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+.resource-value {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
 .resource-progress {
     height: 6px;
-    background-color: #e9ecef;
+    background-color: var(--color-gray-200);
     border-radius: 3px;
     overflow: hidden;
-    margin-top: 5px;
+    margin: 4px 0;
 }
 
 .resource-progress .progress-bar {
     height: 100%;
+}
+
+/* Buttons */
+.btn {
+    border-radius: 4px;
+    font-weight: 500;
+    font-size: 0.875rem;
+    padding: 0.375rem 0.75rem;
+    transition: all 0.2s;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+.btn-action {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+
+.btn-action:hover {
+    transform: translateY(-1px);
+}
+
+/* Table View */
+.table-container {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.table {
+    margin-bottom: 0;
+}
+
+.table th {
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-gray-600);
+    border-top: none;
+    padding: 0.75rem 1rem;
+    background-color: var(--color-gray-100);
+    border-bottom: 2px solid var(--color-gray-300);
+}
+
+.table td {
+    padding: 1rem;
+    vertical-align: middle;
+    font-size: 0.875rem;
+    border-top: 1px solid var(--color-gray-200);
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+/* Metrics visualization */
+.metrics-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.metric-bar {
+    flex: 1;
+    height: 4px;
+    background-color: var(--color-gray-200);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.metric-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+}
+
+.metric-bar-fill.cpu {
+    background-color: var(--color-success);
+}
+
+.metric-bar-fill.memory {
+    background-color: var(--color-info);
+}
+
+.metric-value {
+    font-size: 0.75rem;
+    font-weight: 600;
+    min-width: 40px;
+    text-align: right;
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--color-gray-600);
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.empty-state h5 {
+    margin-bottom: 0.5rem;
+    color: var(--color-gray-700);
+}
+
+.empty-state p {
+    margin-bottom: 1.5rem;
+    max-width: 300px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Progress Bars */
+.progress {
+    border-radius: 3px;
+    background-color: var(--color-gray-200);
+}
+
+.progress-bar {
+    border-radius: 3px;
     transition: width 0.3s ease;
 }
 
-/* Метки приложения */
-.app-labels {
+/* Forms */
+.form-control, .form-select {
+    border: 1px solid var(--color-gray-300);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.1);
+}
+
+/* Badges */
+.badge {
+    font-weight: 500;
+    padding: 0.25em 0.6em;
+    font-size: 0.75em;
+}
+
+/* Loading states */
+.loading-spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Grid fix */
+.row {
     display: flex;
     flex-wrap: wrap;
-    gap: 5px;
-    margin-top: 10px;
+    margin-right: -15px;
+    margin-left: -15px;
 }
 
-.app-label {
-    background-color: #e9ecef;
-    color: #495057;
-    padding: 2px 6px;
-    border-radius: 10px;
-    font-size: 0.7rem;
-    font-weight: 500;
+.col-xl-3, .col-lg-4, .col-md-6 {
+    position: relative;
+    width: 100%;
+    padding-right: 15px;
+    padding-left: 15px;
 }
 
-/* Карточки шаблонов */
-.template-card {
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border: 2px solid transparent;
+@media (min-width: 768px) {
+    .col-md-6 {
+        flex: 0 0 50%;
+        max-width: 50%;
+    }
 }
 
-.template-card:hover {
-    border-color: #007bff;
-    transform: translateY(-2px);
+@media (min-width: 992px) {
+    .col-lg-4 {
+        flex: 0 0 33.333333%;
+        max-width: 33.333333%;
+    }
 }
 
-.template-card.selected {
-    border-color: #007bff;
-    background-color: #f8f9fa;
+@media (min-width: 1200px) {
+    .col-xl-3 {
+        flex: 0 0 25%;
+        max-width: 25%;
+    }
 }
 
-/* YAML просмотрщик */
-.yaml-pre {
-    background-color: #f5f5f5;
-    padding: 15px;
-    border-radius: 5px;
-    border-left: 4px solid #007bff;
-    font-family: 'Consolas', 'Monaco', monospace;
-    font-size: 0.85rem;
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-/* Табличный вид */
-#applications-list .table tbody tr {
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-#applications-list .table tbody tr:hover {
-    background-color: #f8f9fa;
-}
-
-/* Анимации */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.fade-in {
-    animation: fadeIn 0.5s ease-out;
-}
-
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
-}
-
-.pulse {
-    animation: pulse 2s infinite;
-}
-
-/* Адаптивность */
+/* Responsive */
 @media (max-width: 768px) {
-    .app-card {
-        margin-bottom: 15px;
+    .container-fluid {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
     }
     
-    .app-icon {
-        width: 40px;
-        height: 40px;
-        font-size: 1.2rem;
+    .card-body {
+        padding: 1rem;
     }
     
-    .stat-card h5 {
-        font-size: 1.1rem;
+    .table-responsive {
+        font-size: 0.8rem;
     }
-}
-
-/* Уведомления */
-.toast-alert {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 9999;
-    min-width: 300px;
-    animation: fadeIn 0.3s ease-out;
-}
-
-/* Пагинация */
-.pagination .page-item.active .page-link {
-    background-color: #007bff;
-    border-color: #007bff;
-}
-
-/* Сетка приложений */
-.apps-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
-}
-
-/* Компактный вид */
-.compact-card {
-    padding: 10px;
-}
-
-.compact-card .app-icon {
-    width: 32px;
-    height: 32px;
-    font-size: 1rem;
-    margin-right: 10px;
-}
-
-.compact-card h6 {
-    font-size: 0.9rem;
-    margin-bottom: 5px;
+    
+    .btn-group {
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+    
+    .col-md-6 {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
 }
