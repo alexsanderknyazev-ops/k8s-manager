@@ -9,10 +9,15 @@ let memoryChart = null;
 let detailedCpuChart = null;
 let detailedMemoryChart = null;
 
+// Port-forward сессии
+let portForwardSessions = [];
+let currentPortForwardSession = null;
+
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     loadPods();
     loadMetrics();
+    loadPortForwardSessions();
     setupEventListeners();
     initResourceChart();
     initMainCharts();
@@ -89,6 +94,7 @@ function setupEventListeners() {
         document.getElementById('current-namespace').textContent = currentNamespace;
         loadPods();
         loadMetrics();
+        loadPortForwardSessions();
     });
     
     // Поиск
@@ -103,8 +109,251 @@ function setupEventListeners() {
     document.getElementById('refresh-btn').addEventListener('click', function() {
         loadPods();
         loadMetrics();
+        loadPortForwardSessions();
+    });
+
+    // Автоматическое обновление port-forward сессий каждые 5 секунд
+    setInterval(() => {
+        if (document.visibilityState === 'visible') {
+            loadPortForwardSessions();
+        }
+    }, 5000);
+}
+
+// ===== PORT-FORWARDING FUNCTIONS =====
+
+// Показать модальное окно Port-forward
+function showPortForwardModal(namespace, podName) {
+    currentPod = { namespace, name: podName };
+    
+    document.getElementById('pf-pod').value = podName;
+    document.getElementById('pf-namespace').value = namespace;
+    document.getElementById('pf-pod-display').value = podName;
+    document.getElementById('pf-remote-port').value = '';
+    document.getElementById('pf-local-port').value = '';
+    document.getElementById('portForwardResult').style.display = 'none';
+    document.getElementById('portForwardForm').style.display = 'block';
+    
+    const modal = new bootstrap.Modal(document.getElementById('portForwardModal'));
+    modal.show();
+}
+
+// Установить порт
+function setPort(port) {
+    document.getElementById('pf-remote-port').value = port;
+    document.getElementById('pf-local-port').value = port;
+}
+
+// Проверить доступность порта
+async function checkPortAvailable(port) {
+    try {
+        const response = await fetch(`/api/portforward/check/${port}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const data = await response.json();
+        return data.available;
+    } catch (error) {
+        console.error('Error checking port:', error);
+        return false;
+    }
+}
+
+// Запустить port-forward
+async function startPortForward() {
+    const podName = document.getElementById('pf-pod').value;
+    const namespace = document.getElementById('pf-namespace').value;
+    const remotePort = parseInt(document.getElementById('pf-remote-port').value);
+    let localPort = parseInt(document.getElementById('pf-local-port').value);
+    
+    // Валидация
+    if (!remotePort || remotePort < 1 || remotePort > 65535) {
+        showToast('Please enter a valid remote port (1-65535)', 'error');
+        return;
+    }
+    
+    // Если localPort не указан, используем тот же что и remote
+    if (!localPort || localPort < 1024 || localPort > 65535) {
+        localPort = remotePort;
+    }
+    
+    // Проверяем доступность порта
+    const portAvailable = await checkPortAvailable(localPort);
+    if (!portAvailable) {
+        showToast(`Port ${localPort} is already in use. Please choose a different port.`, 'error');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch('/api/portforward/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                pod: podName,
+                namespace: namespace,
+                remotePort: remotePort,
+                localPort: localPort
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        currentPortForwardSession = data.session;
+        
+        // Показать результат
+        document.getElementById('portForwardForm').style.display = 'none';
+        document.getElementById('portForwardResult').style.display = 'block';
+        
+        const url = `http://localhost:${localPort}`;
+        document.getElementById('forwarded-url').value = url;
+        document.getElementById('forwarded-link').href = url;
+        
+        showToast('Port-forward started successfully!', 'success');
+        
+        // Обновить список сессий
+        setTimeout(() => loadPortForwardSessions(), 1000);
+        
+    } catch (error) {
+        showToast(`Failed to start port-forward: ${error.message}`, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Остановить port-forward (из модального окна)
+async function stopPortForward() {
+    if (!currentPortForwardSession) return;
+    
+    try {
+        const response = await fetch(`/api/portforward/stop/${currentPortForwardSession.id}`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        showToast('Port-forward stopped', 'info');
+        
+        // Закрыть модальное окно
+        bootstrap.Modal.getInstance(document.getElementById('portForwardModal')).hide();
+        
+        // Обновить список сессий
+        setTimeout(() => loadPortForwardSessions(), 1000);
+        
+    } catch (error) {
+        showToast(`Failed to stop port-forward: ${error.message}`, 'error');
+    }
+}
+
+// Загрузить активные port-forward сессии
+async function loadPortForwardSessions() {
+    try {
+        const response = await fetch('/api/portforward/sessions');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const data = await response.json();
+        portForwardSessions = data.sessions || [];
+        
+        updatePortForwardSessionsUI(portForwardSessions);
+        
+    } catch (error) {
+        console.error('Error loading port-forward sessions:', error);
+        // Не показываем ошибку пользователю, чтобы не мешать основному функционалу
+    }
+}
+
+// Обновить UI с активными сессиями
+function updatePortForwardSessionsUI(sessions) {
+    const card = document.getElementById('portforward-sessions-card');
+    const tbody = document.getElementById('portforward-sessions-body');
+    
+    if (sessions.length === 0) {
+        card.style.display = 'none';
+        return;
+    }
+    
+    card.style.display = 'block';
+    
+    // Фильтруем только активные сессии для текущего namespace
+    const activeSessions = sessions.filter(session => 
+        session.status === 'running' && 
+        (session.namespace === currentNamespace || currentNamespace === 'all')
+    );
+    
+    if (activeSessions.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="4" class="text-center py-2">
+                    <small class="text-muted">No active port-forwards</small>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    let html = '';
+    activeSessions.forEach(session => {
+        const statusClass = session.status === 'running' ? 'bg-success' : 
+                          session.status === 'starting' ? 'bg-warning' : 'bg-danger';
+        
+        html += `
+            <tr>
+                <td>
+                    <small>${session.pod}</small>
+                </td>
+                <td>
+                    <small><code>${session.localPort}→${session.remotePort}</code></small>
+                </td>
+                <td>
+                    <span class="badge ${statusClass} badge-sm">${session.status}</span>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger btn-action-sm" 
+                            onclick="stopPortForwardSession('${session.id}')" title="Stop">
+                        <i class="fas fa-stop"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+// Остановить конкретную port-forward сессию (из боковой панели)
+async function stopPortForwardSession(sessionId) {
+    try {
+        const response = await fetch(`/api/portforward/stop/${sessionId}`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        showToast('Port-forward session stopped', 'info');
+        
+        // Обновить список сессий
+        setTimeout(() => loadPortForwardSessions(), 500);
+        
+    } catch (error) {
+        showToast(`Failed to stop session: ${error.message}`, 'error');
+    }
+}
+
+// Копировать forwarded URL
+function copyForwardedURL() {
+    const url = document.getElementById('forwarded-url').value;
+    navigator.clipboard.writeText(url).then(() => {
+        showToast('URL copied to clipboard!', 'success');
+    }).catch(err => {
+        showToast('Failed to copy URL', 'error');
     });
 }
+
+// ===== ОСНОВНЫЕ ФУНКЦИИ PODS =====
 
 // Загрузка списка подов
 async function loadPods() {
@@ -124,8 +373,6 @@ async function loadPods() {
         updateStats(pods);
         renderPodsTable(pods);
         updateLastUpdated();
-        
-        console.log(`Loaded ${pods.length} pods from ${currentNamespace}`);
         
     } catch (error) {
         console.error('Error loading pods:', error);
@@ -362,7 +609,7 @@ function updateCharts() {
     });
 }
 
-// Рендер таблицы подов с метриками
+// Рендер таблицы подов с метриками И кнопкой Port-forward
 function renderPodsTable(pods) {
     const tbody = document.getElementById('pods-table-body');
     
@@ -408,10 +655,13 @@ function renderPodsTable(pods) {
         const memoryUsage = metric ? metric.memory_usage : 'N/A';
         const cpuPercent = metric && metric.cpu_percent !== undefined ? metric.cpu_percent : 0;
         const memoryPercent = metric && metric.memory_percent !== undefined ? metric.memory_percent : 0;
-        const cpuRaw = metric ? metric.cpu_raw : 0;
-        const memoryRaw = metric ? metric.memory_raw : 0;
         
         const statusClass = getStatusClass(status);
+        
+        // Проверяем, есть ли активный port-forward для этого пода
+        const hasActivePortForward = portForwardSessions.some(session => 
+            session.pod === podName && session.namespace === namespace && session.status === 'running'
+        );
         
         html += `
             <tr data-pod-name="${podName}" data-namespace="${namespace}">
@@ -420,6 +670,7 @@ function renderPodsTable(pods) {
                         <i class="fas fa-cube me-2 text-primary"></i>
                         <strong>${highlightSearch(podName, searchTerm)}</strong>
                         ${pod.ip ? `<small class="text-muted ms-2">(${pod.ip})</small>` : ''}
+                        ${hasActivePortForward ? `<i class="fas fa-exchange-alt text-success ms-2" title="Active Port-forward"></i>` : ''}
                     </div>
                 </td>
                 <td><span class="badge bg-secondary">${namespace}</span></td>
@@ -473,6 +724,11 @@ function renderPodsTable(pods) {
                 </td>
                 <td>
                     <div class="btn-group" role="group">
+                        <button class="btn btn-action btn-outline-success btn-sm" 
+                                onclick="showPortForwardModal('${namespace}', '${podName}')"
+                                title="Port Forward">
+                            <i class="fas fa-exchange-alt"></i>
+                        </button>
                         <button class="btn btn-action btn-outline-info btn-sm" 
                                 onclick="showPodMetrics('${namespace}', '${podName}')"
                                 title="Metrics">
@@ -483,7 +739,7 @@ function renderPodsTable(pods) {
                                 title="Details">
                             <i class="fas fa-info"></i>
                         </button>
-                        <button class="btn btn-action btn-outline-success btn-sm" 
+                        <button class="btn btn-action btn-outline-secondary btn-sm" 
                                 onclick="showLogs('${namespace}', '${podName}')"
                                 title="Logs">
                             <i class="fas fa-file-alt"></i>
@@ -1200,7 +1456,6 @@ function showError(message) {
 }
 
 function showToast(message, type = 'info') {
-    // Простая реализация toast уведомления
     const toast = document.createElement('div');
     toast.className = `toast-alert alert alert-${type} alert-dismissible fade show`;
     toast.style.cssText = `
@@ -1304,10 +1559,6 @@ function deleteAllFailedPods() {
 function restartAllPods() {
     if (!confirm('Restart all pods? This will trigger redeployment.')) return;
     showToast('Restart all pods functionality would be implemented here', 'info');
-}
-
-function toggleViewMode() {
-    showToast('Grid view would be implemented here', 'info');
 }
 
 async function testConnection() {

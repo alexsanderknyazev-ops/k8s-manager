@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,11 +22,37 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/portforward"
+	"k8s.io/client-go/transport/spdy"
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 var clientset *kubernetes.Clientset
 var metricsClient *metricsv.Clientset
+
+// PortForwardSession управляет сессией port-forward
+type PortForwardSession struct {
+	ID         string    `json:"id"`
+	Pod        string    `json:"pod"`
+	Namespace  string    `json:"namespace"`
+	LocalPort  int       `json:"localPort"`
+	RemotePort int       `json:"remotePort"`
+	Status     string    `json:"status"` // running, stopped, error
+	CreatedAt  time.Time `json:"createdAt"`
+	StartedAt  time.Time `json:"startedAt,omitempty"`
+	URL        string    `json:"url"`
+	StopChan   chan struct{}
+}
+
+// PortForwardManager управляет всеми сессиями
+type PortForwardManager struct {
+	sessions map[string]*PortForwardSession
+	mu       sync.RWMutex
+}
+
+var pfManager = &PortForwardManager{
+	sessions: make(map[string]*PortForwardSession),
+}
 
 func main() {
 	// Инициализируем клиент
@@ -104,6 +133,12 @@ func main() {
 	r.DELETE("/api/pod/:namespace/:pod", deletePodHandler)
 	r.GET("/api/pod/details/:namespace/:pod", getPodDetailsHandler)
 
+	// Port-forwarding API
+	r.GET("/api/portforward/sessions", getPortForwardSessionsHandler)
+	r.POST("/api/portforward/start", startPortForwardHandler)
+	r.POST("/api/portforward/stop/:id", stopPortForwardHandler)
+	r.GET("/api/portforward/check/:port", checkPortAvailableHandler)
+
 	// Deployments
 	r.GET("/api/deployments", getDeploymentsHandler)
 	r.GET("/api/deployment/yaml/:namespace/:name", getDeploymentYAMLHandler)
@@ -150,39 +185,295 @@ func main() {
 	r.Run(":" + port)
 }
 
+// ===== PORT-FORWARDING HANDLERS =====
+
+// Получение активных сессий port-forward
+func getPortForwardSessionsHandler(c *gin.Context) {
+	pfManager.mu.RLock()
+	defer pfManager.mu.RUnlock()
+
+	sessions := make([]*PortForwardSession, 0, len(pfManager.sessions))
+	for _, session := range pfManager.sessions {
+		sessions = append(sessions, session)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"count":    len(sessions),
+		"sessions": sessions,
+	})
+}
+
+// Запуск port-forward
+func startPortForwardHandler(c *gin.Context) {
+	var request struct {
+		Pod        string `json:"pod" binding:"required"`
+		Namespace  string `json:"namespace" binding:"required"`
+		RemotePort int    `json:"remotePort" binding:"required"`
+		LocalPort  int    `json:"localPort"`
+	}
+
+	if err := c.BindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Проверяем, существует ли под
+	pod, err := clientset.CoreV1().Pods(request.Namespace).Get(
+		context.TODO(), request.Pod, metav1.GetOptions{})
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pod not found: " + err.Error()})
+		return
+	}
+
+	// Проверяем, готов ли под
+	if pod.Status.Phase != corev1.PodRunning {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Pod is not running",
+			"phase": pod.Status.Phase,
+		})
+		return
+	}
+
+	// Если localPort не указан, используем тот же что и remote
+	if request.LocalPort == 0 {
+		request.LocalPort = request.RemotePort
+	}
+
+	// Проверяем, не занят ли local порт
+	if isPortInUse(request.LocalPort) {
+		c.JSON(http.StatusConflict, gin.H{
+			"error": fmt.Sprintf("Local port %d is already in use", request.LocalPort),
+		})
+		return
+	}
+
+	// Создаем сессию
+	sessionID := fmt.Sprintf("%s-%s-%d-%d",
+		request.Namespace, request.Pod, request.RemotePort, time.Now().Unix())
+
+	session := &PortForwardSession{
+		ID:         sessionID,
+		Pod:        request.Pod,
+		Namespace:  request.Namespace,
+		LocalPort:  request.LocalPort,
+		RemotePort: request.RemotePort,
+		Status:     "starting",
+		CreatedAt:  time.Now(),
+		StopChan:   make(chan struct{}),
+		URL:        fmt.Sprintf("http://localhost:%d", request.LocalPort),
+	}
+
+	// Сохраняем сессию
+	pfManager.mu.Lock()
+	pfManager.sessions[sessionID] = session
+	pfManager.mu.Unlock()
+
+	// Запускаем port-forward в горутине
+	go startPortForward(session)
+
+	c.JSON(http.StatusOK, gin.H{
+		"session": session,
+		"message": fmt.Sprintf("Port-forward started: %d -> %s:%d",
+			request.LocalPort, request.Pod, request.RemotePort),
+	})
+}
+
+// Функция запуска port-forward
+func startPortForward(session *PortForwardSession) {
+	log.Printf("🚀 Starting port-forward for pod %s/%s: %d -> %d",
+		session.Namespace, session.Pod, session.LocalPort, session.RemotePort)
+
+	session.Status = "running"
+	session.StartedAt = time.Now()
+
+	defer func() {
+		session.Status = "stopped"
+		close(session.StopChan)
+
+		// Удаляем сессию из менеджера
+		pfManager.mu.Lock()
+		delete(pfManager.sessions, session.ID)
+		pfManager.mu.Unlock()
+
+		log.Printf("🛑 Port-forward stopped for pod %s/%s", session.Namespace, session.Pod)
+	}()
+
+	// Получаем конфиг
+	config, err := getK8sConfig()
+	if err != nil {
+		log.Printf("❌ Failed to get kubeconfig: %v", err)
+		session.Status = "error"
+		return
+	}
+
+	// Создаем round tripper для SPDY
+	roundTripper, upgrader, err := spdy.RoundTripperFor(config)
+	if err != nil {
+		log.Printf("❌ Failed to create round tripper: %v", err)
+		session.Status = "error"
+		return
+	}
+
+	// URL для port-forward
+	path := fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/portforward",
+		session.Namespace, session.Pod)
+
+	// Получаем хост из конфига
+	hostURL, err := url.Parse(config.Host)
+	if err != nil {
+		log.Printf("❌ Failed to parse host URL: %v", err)
+		session.Status = "error"
+		return
+	}
+
+	// Создаем полный URL для порт-форвардинга
+	serverURL := &url.URL{
+		Scheme: hostURL.Scheme,
+		Host:   hostURL.Host,
+		Path:   path,
+	}
+
+	// Создаем dialer
+	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: roundTripper},
+		http.MethodPost, serverURL)
+
+	// Порт для форвардинга
+	ports := []string{fmt.Sprintf("%d:%d", session.LocalPort, session.RemotePort)}
+
+	// Каналы для ошибок
+	readyChan := make(chan struct{}, 1)
+
+	// Запускаем port-forward
+	pf, err := portforward.New(dialer, ports, session.StopChan, readyChan, os.Stdout, os.Stderr)
+	if err != nil {
+		log.Printf("❌ Failed to create port forward: %v", err)
+		session.Status = "error"
+		return
+	}
+
+	// Запускаем в горутине
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- pf.ForwardPorts()
+	}()
+
+	// Ждем готовности
+	select {
+	case <-readyChan:
+		log.Printf("✅ Port-forward ready: %s/%s %d->%d",
+			session.Namespace, session.Pod, session.LocalPort, session.RemotePort)
+
+		// Обновляем статус
+		session.Status = "running"
+
+	case err := <-errChan:
+		log.Printf("❌ Port-forward error: %v", err)
+		session.Status = "error"
+		return
+
+	case <-time.After(10 * time.Second):
+		log.Printf("❌ Port-forward timeout")
+		session.Status = "error"
+		return
+	}
+
+	// Ждем остановки
+	select {
+	case err := <-errChan:
+		if err != nil {
+			log.Printf("❌ Port-forward stopped with error: %v", err)
+			session.Status = "error"
+		} else {
+			log.Printf("ℹ️ Port-forward completed normally")
+			session.Status = "stopped"
+		}
+
+	case <-session.StopChan:
+		log.Printf("ℹ️ Port-forward manually stopped: %s/%s", session.Namespace, session.Pod)
+		session.Status = "stopped"
+	}
+}
+
+// Остановка port-forward
+func stopPortForwardHandler(c *gin.Context) {
+	sessionID := c.Param("id")
+
+	pfManager.mu.Lock()
+	session, exists := pfManager.sessions[sessionID]
+	pfManager.mu.Unlock()
+
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
+		return
+	}
+
+	// Останавливаем сессию
+	if session.StopChan != nil {
+		close(session.StopChan)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Port-forward stopped",
+		"session": sessionID,
+	})
+}
+
+// Проверка доступности порта
+func checkPortAvailableHandler(c *gin.Context) {
+	portStr := c.Param("port")
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid port number"})
+		return
+	}
+
+	available := !isPortInUse(port)
+	c.JSON(http.StatusOK, gin.H{
+		"port":      port,
+		"available": available,
+	})
+}
+
+// Проверка занятости порта
+func isPortInUse(port int) bool {
+	timeout := time.Second
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort("localhost", strconv.Itoa(port)), timeout)
+	if err != nil {
+		return false
+	}
+	if conn != nil {
+		conn.Close()
+		return true
+	}
+	return false
+}
+
+// Получение k8s конфига
+func getK8sConfig() (*rest.Config, error) {
+	// Попробовать получить конфиг из кластера
+	config, err := rest.InClusterConfig()
+	if err == nil {
+		return config, nil
+	}
+
+	// Использовать локальный kubeconfig
+	kubeconfig := os.Getenv("KUBECONFIG")
+	if kubeconfig == "" {
+		home, _ := os.UserHomeDir()
+		kubeconfig = filepath.Join(home, ".kube", "config")
+	}
+
+	return clientcmd.BuildConfigFromFlags("", kubeconfig)
+}
+
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 func initK8s() {
 	log.Println("🔧 Initializing Kubernetes client...")
 
-	var config *rest.Config
-	var err error
-
-	// Способ 1: Попробовать получить конфиг из кластера
-	config, err = rest.InClusterConfig()
+	config, err := getK8sConfig()
 	if err != nil {
-		log.Println("ℹ️  Not running inside Kubernetes cluster, trying local kubeconfig...")
-
-		// Способ 2: Использовать локальный kubeconfig
-		kubeconfig := os.Getenv("KUBECONFIG")
-		if kubeconfig == "" {
-			home, _ := os.UserHomeDir()
-			kubeconfig = filepath.Join(home, ".kube", "config")
-			log.Printf("ℹ️  Using default kubeconfig: %s", kubeconfig)
-		}
-
-		// Проверить существует ли файл
-		if _, err := os.Stat(kubeconfig); os.IsNotExist(err) {
-			log.Printf("❌ Kubeconfig not found at: %s", kubeconfig)
-			log.Println("💡 Run: minikube kubectl -- config view > ~/.kube/config")
-			return
-		}
-
-		// Загрузить конфиг из файла
-		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-		if err != nil {
-			log.Printf("❌ Failed to build config from kubeconfig: %v", err)
-			return
-		}
+		log.Printf("❌ Failed to get kubeconfig: %v", err)
+		return
 	}
 
 	// Создать клиент
@@ -667,6 +958,9 @@ func homeHandler(c *gin.Context) {
 			"GET  /api/nodes - List nodes",
 			"GET  /api/metrics/pods/:namespace - Get pod metrics",
 			"GET  /api/metrics/nodes - Get node metrics",
+			"GET  /api/portforward/sessions - Get active port-forward sessions",
+			"POST /api/portforward/start - Start port-forward",
+			"POST /api/portforward/stop/:id - Stop port-forward",
 		},
 	})
 }
