@@ -3,6 +3,7 @@ let clusterData = {};
 let resourceChart = null;
 let autoRefreshInterval = null;
 let isFirstLoad = true;
+let metricsData = {};
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
@@ -49,13 +50,17 @@ async function loadDashboard(showLoading = true) {
             deploymentsData,
             nodesData,
             namespacesData,
-            clusterInfo
+            clusterInfo,
+            allPodsMetrics,
+            nodesMetrics
         ] = await Promise.all([
             fetch('/api/pods?namespace=all').then(res => res.json()),
             fetch('/api/deployments?namespace=all').then(res => res.json()),
             fetch('/api/nodes').then(res => res.json()),
             fetch('/api/namespaces').then(res => res.json()),
-            fetch('/api/test').then(res => res.json())
+            fetch('/api/test').then(res => res.json()),
+            fetch('/api/metrics/all-pods').then(res => res.json()),
+            fetch('/api/metrics/nodes').then(res => res.json())
         ]);
         
         // Сохраняем данные
@@ -67,6 +72,12 @@ async function loadDashboard(showLoading = true) {
             clusterInfo: clusterInfo
         };
         
+        metricsData = {
+            pods: allPodsMetrics.all_metrics || [],
+            nodes: nodesMetrics.nodes || [],
+            clusterUsage: nodesMetrics.cluster_usage || {}
+        };
+        
         // Обновляем UI
         updateDashboard();
         
@@ -74,6 +85,7 @@ async function loadDashboard(showLoading = true) {
         loadEvents();
         loadTopConsumers();
         loadRecentDeployments();
+        updateNodeMetrics();
         
         if (isFirstLoad) {
             isFirstLoad = false;
@@ -154,7 +166,7 @@ function updateDeploymentsStatus() {
     document.getElementById('deployments-progress').style.width = `${deploymentsPercentage}%`;
 }
 
-// Обновление статуса нод
+// Обновление статуса нод с метриками
 function updateNodesStatus() {
     const nodesList = document.getElementById('nodes-list');
     
@@ -175,6 +187,9 @@ function updateNodesStatus() {
         const statusColor = isReady ? 'success' : 'danger';
         const statusText = isReady ? 'Ready' : 'Not Ready';
         
+        // Находим метрики для этой ноды
+        const nodeMetrics = metricsData.nodes.find(n => n.name === node.name);
+        
         html += `
             <div class="node-card ${nodeClass}">
                 <div class="d-flex justify-content-between align-items-center">
@@ -186,7 +201,6 @@ function updateNodesStatus() {
                         <div class="small text-muted">
                             <div>OS: ${node.os || 'Unknown'}</div>
                             <div>Version: ${node.version || 'Unknown'}</div>
-                            <div>Runtime: ${node.containerd || 'Unknown'}</div>
                         </div>
                     </div>
                     <div class="text-end">
@@ -194,6 +208,26 @@ function updateNodesStatus() {
                         <div class="small text-muted mt-1">${node.age || 'Unknown'}</div>
                     </div>
                 </div>
+                ${nodeMetrics ? `
+                <div class="node-metrics mt-3">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <small class="text-muted">CPU Usage</small>
+                            <div class="fw-bold">${nodeMetrics.cpu_usage || 'N/A'}</div>
+                            <div class="progress" style="height: 4px;">
+                                <div class="progress-bar bg-danger" style="width: ${nodeMetrics.cpu_percent || 0}%"></div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Memory Usage</small>
+                            <div class="fw-bold">${nodeMetrics.memory_usage || 'N/A'}</div>
+                            <div class="progress" style="height: 4px;">
+                                <div class="progress-bar bg-info" style="width: ${nodeMetrics.memory_percent || 0}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                ` : ''}
             </div>
         `;
     });
@@ -201,25 +235,61 @@ function updateNodesStatus() {
     nodesList.innerHTML = html;
 }
 
+// Обновление метрик нод
+function updateNodeMetrics() {
+    if (metricsData.clusterUsage && metricsData.clusterUsage.cpu_percent) {
+        const cpuPercent = metricsData.clusterUsage.cpu_percent;
+        const memoryPercent = metricsData.clusterUsage.memory_percent;
+        
+        document.getElementById('resource-usage').textContent = `${Math.round((cpuPercent + memoryPercent) / 2)}%`;
+        document.getElementById('cpu-usage').textContent = `${cpuPercent}%`;
+        document.getElementById('cpu-progress').style.width = `${cpuPercent}%`;
+        
+        document.getElementById('current-cpu').textContent = `${cpuPercent}%`;
+        document.getElementById('current-cpu-bar').style.width = `${cpuPercent}%`;
+        document.getElementById('current-memory').textContent = `${memoryPercent}%`;
+        document.getElementById('current-memory-bar').style.width = `${memoryPercent}%`;
+        
+        // Обновляем информацию об общих ресурсах
+        document.getElementById('total-cpu').textContent = metricsData.clusterUsage.total_cpu_allocatable || '--';
+        document.getElementById('total-memory').textContent = metricsData.clusterUsage.total_memory_allocatable || '--';
+    }
+}
+
 // Обновление использования ресурсов
 function updateResourceUsage() {
-    // Симуляция использования ресурсов (в реальном приложении получать из метрик)
-    const totalPods = clusterData.pods.length;
-    const totalDeployments = clusterData.deployments.length;
-    
-    // Расчет использования CPU и памяти на основе количества подов
-    const cpuUsage = Math.min(100, Math.floor(totalPods * 8 + totalDeployments * 5));
-    const memoryUsage = Math.min(100, Math.floor(totalPods * 12 + totalDeployments * 8));
-    const totalUsage = Math.round((cpuUsage + memoryUsage) / 2);
-    
-    document.getElementById('resource-usage').textContent = `${totalUsage}%`;
-    document.getElementById('cpu-usage').textContent = `${cpuUsage}%`;
-    document.getElementById('cpu-progress').style.width = `${cpuUsage}%`;
-    
-    document.getElementById('current-cpu').textContent = `${cpuUsage}%`;
-    document.getElementById('current-cpu-bar').style.width = `${cpuUsage}%`;
-    document.getElementById('current-memory').textContent = `${memoryUsage}%`;
-    document.getElementById('current-memory-bar').style.width = `${memoryUsage}%`;
+    // Используем реальные метрики, если они есть
+    if (metricsData.clusterUsage && metricsData.clusterUsage.cpu_percent) {
+        const cpuPercent = metricsData.clusterUsage.cpu_percent;
+        const memoryPercent = metricsData.clusterUsage.memory_percent;
+        const totalUsage = Math.round((cpuPercent + memoryPercent) / 2);
+        
+        document.getElementById('resource-usage').textContent = `${totalUsage}%`;
+        document.getElementById('cpu-usage').textContent = `${cpuPercent}%`;
+        document.getElementById('cpu-progress').style.width = `${cpuPercent}%`;
+        
+        document.getElementById('current-cpu').textContent = `${cpuPercent}%`;
+        document.getElementById('current-cpu-bar').style.width = `${cpuPercent}%`;
+        document.getElementById('current-memory').textContent = `${memoryPercent}%`;
+        document.getElementById('current-memory-bar').style.width = `${memoryPercent}%`;
+    } else {
+        // Симуляция использования ресурсов (на случай если метрики недоступны)
+        const totalPods = clusterData.pods.length;
+        const totalDeployments = clusterData.deployments.length;
+        
+        const cpuUsage = Math.min(100, Math.floor(totalPods * 8 + totalDeployments * 5));
+        const memoryUsage = Math.min(100, Math.floor(totalPods * 12 + totalDeployments * 8));
+        const totalUsage = Math.round((cpuUsage + memoryUsage) / 2);
+        
+        document.getElementById('resource-usage').textContent = `${totalUsage}%`;
+        document.getElementById('cpu-usage').textContent = `${cpuUsage}%`;
+        document.getElementById('cpu-progress').style.width = `${cpuUsage}%`;
+        
+        document.getElementById('current-cpu').textContent = `${cpuUsage}%`;
+        document.getElementById('current-cpu-bar').style.width = `${cpuUsage}%`;
+        document.getElementById('current-memory').textContent = `${memoryUsage}%`;
+        document.getElementById('current-memory-bar').style.width = `${memoryUsage}%`;
+    }
 }
 
 // Обновление информации о кластере
@@ -249,15 +319,19 @@ function updateClusterInfo() {
         namespacesList.innerHTML = html;
     }
     
-    // Общие ресурсы (симуляция)
-    document.getElementById('total-cpu').textContent = '4 Cores';
-    document.getElementById('total-memory').textContent = '8 GB';
+    // Общие ресурсы
+    if (metricsData.clusterUsage) {
+        document.getElementById('total-cpu').textContent = metricsData.clusterUsage.total_cpu_allocatable || '--';
+        document.getElementById('total-memory').textContent = metricsData.clusterUsage.total_memory_allocatable || '--';
+    } else {
+        document.getElementById('total-cpu').textContent = '4 Cores';
+        document.getElementById('total-memory').textContent = '8 GB';
+    }
 }
 
 // Загрузка событий
 async function loadEvents() {
     try {
-        // В реальном приложении здесь будет API для событий
         // Пока используем симуляцию
         simulateEvents();
         
@@ -300,40 +374,123 @@ function simulateEvents() {
     tbody.innerHTML = html;
 }
 
-// Загрузка топ потребителей ресурсов
+// Загрузка топ потребителей ресурсов с реальными метриками
 async function loadTopConsumers() {
     try {
-        // В реальном приложении здесь будет API для метрик
-        // Пока используем симуляцию
-        simulateTopConsumers();
+        if (metricsData.pods && metricsData.pods.length > 0) {
+            updateTopConsumersWithRealMetrics();
+        } else {
+            simulateTopConsumers();
+        }
         
     } catch (error) {
         console.error('Error loading top consumers:', error);
     }
 }
 
-// Симуляция топ потребителей
+// Обновление топ потребителей с реальными метриками
+function updateTopConsumersWithRealMetrics() {
+    // Сортируем по использованию CPU
+    const cpuConsumers = [...metricsData.pods]
+        .sort((a, b) => (b.cpu_raw || 0) - (a.cpu_raw || 0))
+        .slice(0, 5);
+    
+    // Сортируем по использованию памяти
+    const memoryConsumers = [...metricsData.pods]
+        .sort((a, b) => (b.memory_raw || 0) - (a.memory_raw || 0))
+        .slice(0, 5);
+    
+    // Обновляем топ CPU
+    const cpuList = document.querySelectorAll('.card')[8]?.querySelector('.list-group');
+    if (cpuList) {
+        let html = '';
+        cpuConsumers.forEach((pod, index) => {
+            const cpuUsage = pod.cpu || '0m';
+            const cpuPercent = pod.cpu_percent || 0;
+            
+            html += `
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold">${pod.pod}</div>
+                            <small class="text-muted">Namespace: ${pod.namespace}</small>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-danger">${cpuUsage}</span>
+                            <div class="progress mt-1" style="height: 3px; width: 60px;">
+                                <div class="progress-bar bg-danger" style="width: ${Math.min(cpuPercent, 100)}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        cpuList.innerHTML = html || `
+            <div class="list-group-item">
+                <div class="text-center text-muted py-3">
+                    No CPU metrics available
+                </div>
+            </div>
+        `;
+    }
+    
+    // Обновляем топ памяти
+    const memoryList = document.querySelectorAll('.card')[9]?.querySelector('.list-group');
+    if (memoryList) {
+        let html = '';
+        memoryConsumers.forEach((pod, index) => {
+            const memoryUsage = pod.memory || '0Mi';
+            const memoryPercent = pod.memory_percent || 0;
+            
+            html += `
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold">${pod.pod}</div>
+                            <small class="text-muted">Namespace: ${pod.namespace}</small>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-info">${memoryUsage}</span>
+                            <div class="progress mt-1" style="height: 3px; width: 60px;">
+                                <div class="progress-bar bg-info" style="width: ${Math.min(memoryPercent, 100)}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        memoryList.innerHTML = html || `
+            <div class="list-group-item">
+                <div class="text-center text-muted py-3">
+                    No memory metrics available
+                </div>
+            </div>
+        `;
+    }
+}
+
+// Симуляция топ потребителей (если метрики недоступны)
 function simulateTopConsumers() {
     // Топ CPU
     const cpuConsumers = [
-        { name: 'market-app', namespace: 'market', usage: '320m' },
-        { name: 'postgres', namespace: 'market', usage: '280m' },
-        { name: 'user-service', namespace: 'market', usage: '210m' },
-        { name: 'redis', namespace: 'default', usage: '150m' },
-        { name: 'nginx', namespace: 'default', usage: '80m' }
+        { name: 'market-app', namespace: 'market', usage: '320m', percent: 65 },
+        { name: 'postgres', namespace: 'market', usage: '280m', percent: 56 },
+        { name: 'user-service', namespace: 'market', usage: '210m', percent: 42 },
+        { name: 'redis', namespace: 'default', usage: '150m', percent: 30 },
+        { name: 'nginx', namespace: 'default', usage: '80m', percent: 16 }
     ];
     
     // Топ памяти
     const memoryConsumers = [
-        { name: 'postgres', namespace: 'market', usage: '512Mi' },
-        { name: 'market-app', namespace: 'market', usage: '256Mi' },
-        { name: 'user-service', namespace: 'market', usage: '128Mi' },
-        { name: 'redis', namespace: 'default', usage: '64Mi' },
-        { name: 'nginx', namespace: 'default', usage: '32Mi' }
+        { name: 'postgres', namespace: 'market', usage: '512Mi', percent: 64 },
+        { name: 'market-app', namespace: 'market', usage: '256Mi', percent: 32 },
+        { name: 'user-service', namespace: 'market', usage: '128Mi', percent: 16 },
+        { name: 'redis', namespace: 'default', usage: '64Mi', percent: 8 },
+        { name: 'nginx', namespace: 'default', usage: '32Mi', percent: 4 }
     ];
     
     // Обновляем топ CPU
-    const cpuList = document.querySelector('#top-cpu-consumers + .card-body .list-group');
+    const cpuList = document.querySelectorAll('.card')[8]?.querySelector('.list-group');
     if (cpuList) {
         let html = '';
         cpuConsumers.forEach((pod, index) => {
@@ -344,7 +501,12 @@ function simulateTopConsumers() {
                             <div class="fw-bold">${pod.name}</div>
                             <small class="text-muted">Namespace: ${pod.namespace}</small>
                         </div>
-                        <span class="badge bg-danger">${pod.usage}</span>
+                        <div class="text-end">
+                            <span class="badge bg-danger">${pod.usage}</span>
+                            <div class="progress mt-1" style="height: 3px; width: 60px;">
+                                <div class="progress-bar bg-danger" style="width: ${pod.percent}%"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -353,7 +515,7 @@ function simulateTopConsumers() {
     }
     
     // Обновляем топ памяти
-    const memoryList = document.querySelector('#top-memory-consumers + .card-body .list-group');
+    const memoryList = document.querySelectorAll('.card')[9]?.querySelector('.list-group');
     if (memoryList) {
         let html = '';
         memoryConsumers.forEach((pod, index) => {
@@ -364,7 +526,12 @@ function simulateTopConsumers() {
                             <div class="fw-bold">${pod.name}</div>
                             <small class="text-muted">Namespace: ${pod.namespace}</small>
                         </div>
-                        <span class="badge bg-info">${pod.usage}</span>
+                        <div class="text-end">
+                            <span class="badge bg-info">${pod.usage}</span>
+                            <div class="progress mt-1" style="height: 3px; width: 60px;">
+                                <div class="progress-bar bg-info" style="width: ${pod.percent}%"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -381,7 +548,7 @@ async function loadRecentDeployments() {
             .sort((a, b) => new Date(b.created || 0) - new Date(a.created || 0))
             .slice(0, 5);
         
-        const deploymentsList = document.querySelector('#recent-deployments + .card-body .list-group');
+        const deploymentsList = document.querySelectorAll('.card')[10]?.querySelector('.list-group');
         if (deploymentsList) {
             let html = '';
             recentDeployments.forEach(deployment => {
@@ -569,7 +736,7 @@ function refreshDashboard() {
     showToast('Dashboard refreshed', 'info');
 }
 
-// Экспорт дашборда
+// Экспорт дашборда с метриками
 function exportDashboard() {
     const data = {
         timestamp: new Date().toISOString(),
@@ -579,10 +746,18 @@ function exportDashboard() {
             nodes: clusterData.nodes?.length || 0,
             namespaces: clusterData.namespaces?.length || 0
         },
+        metrics: {
+            totalPods: metricsData.pods?.length || 0,
+            clusterUsage: metricsData.clusterUsage || {},
+            topCPUConsumers: metricsData.pods?.slice(0, 5).map(p => ({pod: p.pod, cpu: p.cpu})) || [],
+            topMemoryConsumers: metricsData.pods?.slice(0, 5).map(p => ({pod: p.pod, memory: p.memory})) || []
+        },
         status: {
             cluster: document.getElementById('cluster-status').textContent,
             pods: document.getElementById('pods-count').textContent,
-            deployments: document.getElementById('deployments-count').textContent
+            deployments: document.getElementById('deployments-count').textContent,
+            cpuUsage: document.getElementById('cpu-usage').textContent,
+            memoryUsage: document.getElementById('current-memory').textContent
         }
     };
     
@@ -596,7 +771,7 @@ function exportDashboard() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    showToast('Dashboard data exported', 'success');
+    showToast('Dashboard data exported with metrics', 'success');
 }
 
 // Фильтрация по namespace
@@ -765,3 +940,21 @@ function showToast(message, type = 'info') {
 window.addEventListener('beforeunload', function() {
     clearInterval(autoRefreshInterval);
 });
+
+// Функция для отображения детальной информации о метриках
+function showMetricsDetails() {
+    if (metricsData.clusterUsage) {
+        const metricsText = `
+Cluster Metrics:
+- CPU Usage: ${metricsData.clusterUsage.cpu_percent}%
+- Memory Usage: ${metricsData.clusterUsage.memory_percent}%
+- Total CPU Allocatable: ${metricsData.clusterUsage.total_cpu_allocatable}
+- Total Memory Allocatable: ${metricsData.clusterUsage.total_memory_allocatable}
+- Total CPU Used: ${metricsData.clusterUsage.total_cpu_used}
+- Total Memory Used: ${metricsData.clusterUsage.total_memory_used}
+`;
+        alert(metricsText);
+    } else {
+        alert('Metrics data not available');
+    }
+}

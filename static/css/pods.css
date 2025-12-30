@@ -196,17 +196,89 @@ body {
     border-radius: 3px;
 }
 
-/* Прогресс бар для памяти */
-.memory-bar {
+/* Прогресс бар */
+.progress-thin {
     height: 6px;
-    background-color: #e9ecef;
-    border-radius: 3px;
-    overflow: hidden;
-    margin-top: 4px;
 }
 
-.memory-fill {
+.progress-thin .progress-bar {
+    border-radius: 3px;
+}
+
+/* Графики */
+.chart-container {
+    position: relative;
+    height: 200px;
+    width: 100%;
+}
+
+/* Модальные окна для метрик */
+.container-list .card {
+    margin-bottom: 0.5rem;
+}
+
+.container-list .card-header {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+}
+
+.container-list .card-body {
+    padding: 0.75rem;
+    font-size: 0.85rem;
+}
+
+/* Таблица метрик контейнеров */
+#container-metrics-table {
+    font-size: 0.85rem;
+}
+
+#container-metrics-table th {
+    font-weight: 600;
+    background-color: #f8f9fa;
+}
+
+#container-metrics-table td, #container-metrics-table th {
+    padding: 0.5rem;
+    vertical-align: middle;
+}
+
+/* Уведомления */
+.toast-alert {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    border-radius: 0.375rem;
+}
+
+/* Панель метрик */
+#metrics-charts .card {
     height: 100%;
-    background-color: #007bff;
+}
+
+#metrics-charts .card-body {
+    padding: 1rem;
+}
+
+/* Кнопки в таблице */
+.btn-group .btn-action {
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.btn-group .btn-action:hover {
+    opacity: 1;
+}
+
+/* Информация о ресурсах */
+#resource-info {
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+/* Прогресс бары в таблице */
+.table td .progress {
+    min-width: 60px;
+    background-color: #e9ecef;
+}
+
+.table td .progress-bar {
     transition: width 0.3s ease;
 }

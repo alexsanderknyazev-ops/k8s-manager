@@ -2,12 +2,47 @@
 let currentNamespace = 'market';
 let currentPod = null;
 let allPods = [];
+let podMetrics = {};
+let resourceChart = null;
+let cpuChart = null;
+let memoryChart = null;
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     loadPods();
+    loadMetrics();
     setupEventListeners();
+    initCharts();
 });
+
+// Инициализация графиков
+function initCharts() {
+    const ctx = document.getElementById('resourceChart').getContext('2d');
+    resourceChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['CPU Usage', 'Memory Usage', 'Available'],
+            datasets: [{
+                data: [0, 0, 100],
+                backgroundColor: ['#007bff', '#28a745', '#e9ecef'],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 10
+                    }
+                }
+            }
+        }
+    });
+}
 
 // Настройка слушателей событий
 function setupEventListeners() {
@@ -16,6 +51,7 @@ function setupEventListeners() {
         currentNamespace = this.value;
         document.getElementById('current-namespace').textContent = currentNamespace;
         loadPods();
+        loadMetrics();
     });
     
     // Поиск
@@ -27,7 +63,10 @@ function setupEventListeners() {
     });
     
     // Кнопка обновления
-    document.getElementById('refresh-btn').addEventListener('click', loadPods);
+    document.getElementById('refresh-btn').addEventListener('click', function() {
+        loadPods();
+        loadMetrics();
+    });
 }
 
 // Загрузка списка подов
@@ -42,61 +81,71 @@ async function loadPods() {
         }
         
         const data = await response.json();
-        
-        // Проверяем структуру ответа
-        if (!data) {
-            throw new Error('Empty response from server');
-        }
-        
-        // data.pods может быть undefined, если нет подов
         const pods = data.pods || [];
-        const namespace = data.namespace || currentNamespace;
-        const count = data.count || pods.length;
-        
         allPods = pods;
         
         updateStats(pods);
         renderPodsTable(pods);
         updateLastUpdated();
         
-        console.log(`Loaded ${pods.length} pods from ${namespace}`);
+        console.log(`Loaded ${pods.length} pods from ${currentNamespace}`);
         
     } catch (error) {
         console.error('Error loading pods:', error);
         showError('Failed to load pods: ' + error.message);
-        
-        // Показываем сообщение об ошибке в таблице
-        const tbody = document.getElementById('pods-table-body');
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="9" class="text-center py-5">
-                    <i class="fas fa-exclamation-triangle fa-2x text-danger mb-3"></i>
-                    <p class="text-danger">Failed to load pods</p>
-                    <p class="text-muted small">${error.message}</p>
-                    <button class="btn btn-sm btn-outline-primary mt-2" onclick="testConnection()">
-                        Test Connection
-                    </button>
-                </td>
-            </tr>
-        `;
+        showEmptyTable();
     } finally {
         showLoading(false);
     }
 }
 
-async function testConnection() {
+// Загрузка метрик
+async function loadMetrics() {
     try {
-        const response = await fetch('/api/test');
-        const data = await response.json();
-        
-        if (data.connected) {
-            showToast('Connected to Kubernetes API!', 'success');
-            loadPods();
-        } else {
-            showToast(`Not connected: ${data.error}`, 'error');
+        const response = await fetch(`/api/metrics/pods/${currentNamespace}`);
+        if (!response.ok) {
+            // Если метрики недоступны, показываем предупреждение
+            if (response.status === 503 || response.status === 404) {
+                showToast('Metrics server not available. Install Metrics Server first.', 'warning');
+                return;
+            }
+            throw new Error(`HTTP ${response.status}`);
         }
+        
+        const data = await response.json();
+        podMetrics = {};
+        
+        if (data.metrics && Array.isArray(data.metrics)) {
+            data.metrics.forEach(metric => {
+                podMetrics[metric.pod] = metric;
+            });
+            
+            updateResourceChart(data.metrics);
+            updateTotalMetrics(data.metrics);
+            renderPodsTable(allPods); // Перерисовываем таблицу с метриками
+            showMetricsCharts();
+        } else {
+            showToast('No metrics data available', 'info');
+        }
+        
     } catch (error) {
-        showToast('Connection test failed: ' + error.message, 'error');
+        console.error('Error loading metrics:', error);
+        showToast('Failed to load metrics: ' + error.message, 'warning');
+    }
+}
+
+// Загрузка детальных метрик для конкретного пода
+async function loadPodMetrics(namespace, podName) {
+    try {
+        const response = await fetch(`/api/metrics/pod/${namespace}/${podName}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const data = await response.json();
+        showDetailedMetrics(data);
+        
+    } catch (error) {
+        console.error('Error loading pod metrics:', error);
+        showToast('Failed to load pod metrics: ' + error.message, 'error');
     }
 }
 
@@ -105,51 +154,163 @@ function updateStats(pods) {
     const stats = {
         running: 0,
         pending: 0,
-        failed: 0,
-        memory: 0
+        failed: 0
     };
     
     pods.forEach(pod => {
         if (pod.status === 'Running') stats.running++;
         else if (pod.status === 'Pending') stats.pending++;
         else if (pod.status === 'Failed') stats.failed++;
-        
-        // Симуляция использования памяти (в реальном приложении нужно получать метрики)
-        stats.memory += Math.floor(Math.random() * 100) + 10;
     });
     
     document.getElementById('running-count').textContent = stats.running;
     document.getElementById('pending-count').textContent = stats.pending;
     document.getElementById('failed-count').textContent = stats.failed;
-    document.getElementById('memory-usage').textContent = stats.memory;
-    document.getElementById('stats-count').textContent = pods.length;
 }
 
-// Рендер таблицы подов
+// Обновление общей статистики метрик
+function updateTotalMetrics(metrics) {
+    let totalCPU = 0;
+    let totalMemory = 0;
+    
+    metrics.forEach(metric => {
+        totalCPU += metric.cpu_raw || 0;
+        totalMemory += metric.memory_raw || 0;
+    });
+    
+    document.getElementById('total-cpu').textContent = `${totalCPU}m`;
+    document.getElementById('total-memory').textContent = formatBytes(totalMemory);
+}
+
+// Обновление графика ресурсов
+function updateResourceChart(metrics) {
+    let totalCPU = 0;
+    let totalMemory = 0;
+    
+    metrics.forEach(metric => {
+        totalCPU += metric.cpu_raw || 0;
+        totalMemory += metric.memory_raw || 0;
+    });
+    
+    // Для графика используем примерные лимиты (можно заменить реальными)
+    const cpuLimit = Math.max(totalCPU * 2, 1000); // Примерный лимит
+    const memoryLimit = Math.max(totalMemory * 2, 100 * 1024 * 1024); // 100MB примерный лимит
+    
+    const cpuPercent = Math.min((totalCPU / cpuLimit) * 100, 100);
+    const memoryPercent = Math.min((totalMemory / memoryLimit) * 100, 100);
+    
+    resourceChart.data.datasets[0].data = [
+        cpuPercent,
+        memoryPercent,
+        100 - Math.max(cpuPercent, memoryPercent)
+    ];
+    resourceChart.update();
+    
+    document.getElementById('resource-info').innerHTML = `
+        CPU: ${cpuPercent.toFixed(1)}%<br>
+        Memory: ${memoryPercent.toFixed(1)}%
+    `;
+}
+
+// Показать графики метрик
+function showMetricsCharts() {
+    document.getElementById('metrics-charts').style.display = 'flex';
+    updateCharts();
+}
+
+// Обновление графиков CPU и Memory
+function updateCharts() {
+    const metrics = Object.values(podMetrics);
+    
+    if (metrics.length === 0) return;
+    
+    // Сортируем по использованию CPU
+    metrics.sort((a, b) => (b.cpu_raw || 0) - (a.cpu_raw || 0));
+    
+    const topPods = metrics.slice(0, 8); // Берем топ-8 подов
+    
+    // Обновляем график CPU
+    const cpuCtx = document.getElementById('cpuChart').getContext('2d');
+    if (cpuChart) cpuChart.destroy();
+    
+    cpuChart = new Chart(cpuCtx, {
+        type: 'bar',
+        data: {
+            labels: topPods.map(m => m.pod.substring(0, 20)),
+            datasets: [{
+                label: 'CPU Usage (m)',
+                data: topPods.map(m => m.cpu_raw || 0),
+                backgroundColor: '#007bff'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'mCPU'
+                    }
+                }
+            }
+        }
+    });
+    
+    // Обновляем график Memory
+    const memoryCtx = document.getElementById('memoryChart').getContext('2d');
+    if (memoryChart) memoryChart.destroy();
+    
+    memoryChart = new Chart(memoryCtx, {
+        type: 'bar',
+        data: {
+            labels: topPods.map(m => m.pod.substring(0, 20)),
+            datasets: [{
+                label: 'Memory Usage',
+                data: topPods.map(m => (m.memory_raw || 0) / (1024 * 1024)), // Конвертируем в MB
+                backgroundColor: '#28a745'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'MB'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Рендер таблицы подов с метриками
 function renderPodsTable(pods) {
     const tbody = document.getElementById('pods-table-body');
     
-    // Проверяем, что pods - массив
-    if (!Array.isArray(pods)) {
-        console.error('pods is not an array:', pods);
-        pods = [];
+    if (!Array.isArray(pods) || pods.length === 0) {
+        showEmptyTable();
+        return;
     }
     
     const searchTerm = document.getElementById('search-pods').value.toLowerCase();
-    
-    // Фильтрация по статусу
     const activeStatuses = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'))
         .map(cb => cb.value);
     
     let filteredPods = pods.filter(pod => {
-        // Проверяем структуру объекта pod
         if (!pod || typeof pod !== 'object') return false;
         
-        // Поиск по имени
         if (searchTerm && (!pod.name || !pod.name.toLowerCase().includes(searchTerm))) {
             return false;
         }
-        // Фильтр по статусу
         if (activeStatuses.length > 0 && (!pod.status || !activeStatuses.includes(pod.status))) {
             return false;
         }
@@ -157,39 +318,27 @@ function renderPodsTable(pods) {
     });
     
     if (filteredPods.length === 0) {
-        let message = 'No pods found';
-        if (pods.length === 0) {
-            message = 'No pods in this namespace';
-        } else if (searchTerm || activeStatuses.length > 0) {
-            message = 'No pods match the current filters';
-        }
-        
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="9" class="text-center py-5">
-                    <i class="fas fa-search fa-2x text-muted mb-3"></i>
-                    <p class="text-muted">${message}</p>
-                    ${pods.length > 0 ? '<small class="text-muted">Try changing your filters</small>' : ''}
-                </td>
-            </tr>
-        `;
+        showEmptyTable('No pods match the current filters');
         return;
     }
     
     let html = '';
     filteredPods.forEach((pod, index) => {
-        // Дефолтные значения на случай отсутствия полей
         const podName = pod.name || `pod-${index}`;
         const namespace = pod.namespace || currentNamespace;
         const status = pod.status || 'Unknown';
         const ready = pod.ready || '0/0';
         const restarts = pod.restarts || 0;
-        const age = pod.age || 'unknown';
-        const node = pod.node || '-';
-        const ip = pod.ip || '-';
+        
+        const metric = podMetrics[podName];
+        const cpuUsage = metric ? metric.cpu_usage : 'N/A';
+        const memoryUsage = metric ? metric.memory_usage : 'N/A';
+        const cpuPercent = metric ? metric.cpu_percent : 0;
+        const memoryPercent = metric ? metric.memory_percent : 0;
+        const cpuRaw = metric ? metric.cpu_raw : 0;
+        const memoryRaw = metric ? metric.memory_raw : 0;
         
         const statusClass = getStatusClass(status);
-        const memoryUsage = Math.floor(Math.random() * 100) + 10; // Симуляция
         
         html += `
             <tr data-pod-name="${podName}" data-namespace="${namespace}">
@@ -197,7 +346,7 @@ function renderPodsTable(pods) {
                     <div class="d-flex align-items-center">
                         <i class="fas fa-cube me-2 text-primary"></i>
                         <strong>${highlightSearch(podName, searchTerm)}</strong>
-                        ${ip ? `<small class="text-muted ms-2">(${ip})</small>` : ''}
+                        ${pod.ip ? `<small class="text-muted ms-2">(${pod.ip})</small>` : ''}
                     </div>
                 </td>
                 <td><span class="badge bg-secondary">${namespace}</span></td>
@@ -220,17 +369,42 @@ function renderPodsTable(pods) {
                     </span>
                 </td>
                 <td>
-                    <div>
-                        <small>${memoryUsage} MB</small>
-                        <div class="memory-bar">
-                            <div class="memory-fill" style="width: ${Math.min(memoryUsage / 2, 100)}%"></div>
-                        </div>
+                    <div class="d-flex align-items-center">
+                        <span class="me-2">${cpuUsage}</span>
+                        ${cpuPercent > 0 ? `
+                            <div class="progress flex-grow-1" style="height: 6px;">
+                                <div class="progress-bar bg-primary" style="width: ${Math.min(cpuPercent, 100)}%"></div>
+                            </div>
+                        ` : ''}
                     </div>
                 </td>
-                <td><small class="text-muted">${age}</small></td>
-                <td><small>${node}</small></td>
+                <td>
+                    <div class="d-flex align-items-center">
+                        <span class="me-2">${memoryUsage}</span>
+                        ${memoryPercent > 0 ? `
+                            <div class="progress flex-grow-1" style="height: 6px;">
+                                <div class="progress-bar bg-success" style="width: ${Math.min(memoryPercent, 100)}%"></div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </td>
+                <td>
+                    <span class="badge ${cpuPercent > 80 ? 'bg-danger' : cpuPercent > 50 ? 'bg-warning' : 'bg-info'}">
+                        ${cpuPercent}%
+                    </span>
+                </td>
+                <td>
+                    <span class="badge ${memoryPercent > 80 ? 'bg-danger' : memoryPercent > 50 ? 'bg-warning' : 'bg-info'}">
+                        ${memoryPercent}%
+                    </span>
+                </td>
                 <td>
                     <div class="btn-group" role="group">
+                        <button class="btn btn-action btn-outline-info btn-sm" 
+                                onclick="showPodMetrics('${namespace}', '${podName}')"
+                                title="Metrics">
+                            <i class="fas fa-chart-line"></i>
+                        </button>
                         <button class="btn btn-action btn-outline-primary btn-sm" 
                                 onclick="showPodDetails('${namespace}', '${podName}')"
                                 title="Details">
@@ -269,6 +443,69 @@ function renderPodsTable(pods) {
             }
         });
     });
+}
+
+// Показать пустую таблицу
+function showEmptyTable(message = 'No pods found') {
+    const tbody = document.getElementById('pods-table-body');
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="10" class="text-center py-5">
+                <i class="fas fa-search fa-2x text-muted mb-3"></i>
+                <p class="text-muted">${message}</p>
+                ${message.includes('No pods') ? '<small class="text-muted">Try selecting a different namespace</small>' : ''}
+            </td>
+        </tr>
+    `;
+}
+
+// Показать детальные метрики
+function showPodMetrics(namespace, podName) {
+    currentPod = { namespace, name: podName };
+    
+    document.getElementById('metrics-pod-name').textContent = podName;
+    loadPodMetrics(namespace, podName);
+    
+    const modal = new bootstrap.Modal(document.getElementById('metricsModal'));
+    modal.show();
+}
+
+// Показать детали метрик
+function showDetailedMetrics(data) {
+    // Обновляем CPU детали
+    const cpuDetails = document.getElementById('cpu-details');
+    cpuDetails.innerHTML = `
+        <p><strong>CPU Usage:</strong> ${data.total_cpu}</p>
+        <p><strong>Containers:</strong> ${data.containers ? data.containers.length : 0}</p>
+        <p><strong>Last Updated:</strong> ${data.timestamp ? new Date(data.timestamp).toLocaleString() : 'N/A'}</p>
+    `;
+    
+    // Обновляем Memory детали
+    const memoryDetails = document.getElementById('memory-details');
+    memoryDetails.innerHTML = `
+        <p><strong>Memory Usage:</strong> ${data.total_memory}</p>
+        <p><strong>Containers:</strong> ${data.containers ? data.containers.length : 0}</p>
+        <p><strong>Last Updated:</strong> ${data.timestamp ? new Date(data.timestamp).toLocaleString() : 'N/A'}</p>
+    `;
+    
+    // Обновляем таблицу контейнеров
+    const containerTable = document.getElementById('container-metrics-table').querySelector('tbody');
+    containerTable.innerHTML = '';
+    
+    if (data.containers && Array.isArray(data.containers)) {
+        data.containers.forEach(container => {
+            const row = containerTable.insertRow();
+            row.innerHTML = `
+                <td>${container.name}</td>
+                <td>${container.cpu_usage}</td>
+                <td>${container.cpu_limit}</td>
+                <td><span class="badge ${container.cpu_percent > 80 ? 'bg-danger' : container.cpu_percent > 50 ? 'bg-warning' : 'bg-info'}">${container.cpu_percent}%</span></td>
+                <td>${container.memory_usage}</td>
+                <td>${container.memory_limit}</td>
+                <td><span class="badge ${container.memory_percent > 80 ? 'bg-danger' : container.memory_percent > 50 ? 'bg-warning' : 'bg-info'}">${container.memory_percent}%</span></td>
+            `;
+        });
+    }
 }
 
 // Показать логи пода
@@ -466,25 +703,27 @@ function populatePodDetails(data) {
     // Контейнеры
     const containersList = document.getElementById('containers-list');
     containersList.innerHTML = '';
-    data.containers.forEach(container => {
-        const containerDiv = document.createElement('div');
-        containerDiv.className = 'card mb-2';
-        containerDiv.innerHTML = `
-            <div class="card-header">
-                <strong>${container.name}</strong> - ${container.image}
-            </div>
-            <div class="card-body">
-                <p><strong>Resources:</strong> ${JSON.stringify(container.resources || {})}</p>
-                <p><strong>Ports:</strong> ${JSON.stringify(container.ports || [])}</p>
-            </div>
-        `;
-        containersList.appendChild(containerDiv);
-    });
+    if (data.containers && Array.isArray(data.containers)) {
+        data.containers.forEach(container => {
+            const containerDiv = document.createElement('div');
+            containerDiv.className = 'card mb-2';
+            containerDiv.innerHTML = `
+                <div class="card-header">
+                    <strong>${container.name}</strong> - ${container.image}
+                </div>
+                <div class="card-body">
+                    <p><strong>Resources:</strong> ${JSON.stringify(container.resources || {})}</p>
+                    <p><strong>Ports:</strong> ${JSON.stringify(container.ports || [])}</p>
+                </div>
+            `;
+            containersList.appendChild(containerDiv);
+        });
+    }
     
     // Условия
     const conditionsTable = document.getElementById('conditions-table').querySelector('tbody');
     conditionsTable.innerHTML = '';
-    if (data.conditions) {
+    if (data.conditions && Array.isArray(data.conditions)) {
         data.conditions.forEach(condition => {
             const row = conditionsTable.insertRow();
             row.innerHTML = `
@@ -563,9 +802,8 @@ function showLoading(show) {
 }
 
 function showError(message) {
-    // В реальном приложении можно использовать toast или alert
     console.error(message);
-    alert(message);
+    showToast(message, 'error');
 }
 
 function showToast(message, type = 'info') {
@@ -603,18 +841,41 @@ function debounce(func, wait) {
     };
 }
 
+// Форматирование байтов
+function formatBytes(bytes) {
+    if (bytes === 0 || isNaN(bytes)) return '0 B';
+    
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    
+    if (i === 0) return bytes + ' ' + sizes[i];
+    return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
+}
+
 // Экспорт в CSV
 function exportToCSV() {
-    const rows = allPods.map(pod => ({
-        Name: pod.name,
-        Namespace: pod.namespace,
-        Status: pod.status,
-        Ready: pod.ready,
-        Restarts: pod.restarts,
-        Age: pod.age,
-        Node: pod.node || '',
-        IP: pod.ip || ''
-    }));
+    const rows = allPods.map(pod => {
+        const metric = podMetrics[pod.name] || {};
+        return {
+            Name: pod.name,
+            Namespace: pod.namespace,
+            Status: pod.status,
+            Ready: pod.ready,
+            Restarts: pod.restarts,
+            'CPU Usage': metric.cpu_usage || 'N/A',
+            'Memory Usage': metric.memory_usage || 'N/A',
+            'CPU %': metric.cpu_percent || 0,
+            'Memory %': metric.memory_percent || 0,
+            Age: pod.age || '',
+            Node: pod.node || '',
+            IP: pod.ip || ''
+        };
+    });
+    
+    if (rows.length === 0) {
+        showToast('No data to export', 'warning');
+        return;
+    }
     
     const csvContent = [
         Object.keys(rows[0]).join(','),
@@ -636,19 +897,46 @@ function exportToCSV() {
 function deleteAllFailedPods() {
     if (!confirm('Delete all failed pods?')) return;
     
-    allPods.filter(pod => pod.status === 'Failed').forEach(pod => {
+    const failedPods = allPods.filter(pod => pod.status === 'Failed');
+    if (failedPods.length === 0) {
+        showToast('No failed pods to delete', 'info');
+        return;
+    }
+    
+    failedPods.forEach(pod => {
         deletePod(pod.namespace, pod.name);
     });
 }
 
 function restartAllPods() {
     if (!confirm('Restart all pods? This will trigger redeployment.')) return;
-    alert('Restart all pods functionality would be implemented here');
+    showToast('Restart all pods functionality would be implemented here', 'info');
 }
 
 function toggleViewMode() {
-    alert('Grid view would be implemented here');
+    showToast('Grid view would be implemented here', 'info');
+}
+
+async function testConnection() {
+    try {
+        const response = await fetch('/api/test');
+        const data = await response.json();
+        
+        if (data.connected) {
+            showToast('Connected to Kubernetes API!', 'success');
+            loadPods();
+        } else {
+            showToast(`Not connected: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        showToast('Connection test failed: ' + error.message, 'error');
+    }
 }
 
 // Автообновление каждые 30 секунд
-setInterval(loadPods, 30000);
+setInterval(() => {
+    if (document.visibilityState === 'visible') {
+        loadPods();
+        loadMetrics();
+    }
+}, 30000);
