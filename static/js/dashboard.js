@@ -22,6 +22,11 @@ function setupEventListeners() {
             refreshDashboard();
         }
     });
+    
+    // Обработчик для смены namespace
+    document.getElementById('namespace-selector').addEventListener('change', function() {
+        refreshDashboard();
+    });
 }
 
 // Настройка автообновления
@@ -44,6 +49,8 @@ async function loadDashboard(showLoading = true) {
     }
     
     try {
+        const namespace = document.getElementById('namespace-selector').value || 'market';
+        
         // Загружаем все данные параллельно
         const [
             podsData,
@@ -51,16 +58,18 @@ async function loadDashboard(showLoading = true) {
             nodesData,
             namespacesData,
             clusterInfo,
-            allPodsMetrics,
-            nodesMetrics
+            podsMetrics,
+            nodesMetrics,
+            servicesData
         ] = await Promise.all([
-            fetch('/api/pods?namespace=all').then(res => res.json()),
-            fetch('/api/deployments?namespace=all').then(res => res.json()),
+            fetch(`/api/pods?namespace=${namespace}`).then(res => res.json()),
+            fetch(`/api/deployments?namespace=${namespace}`).then(res => res.json()),
             fetch('/api/nodes').then(res => res.json()),
             fetch('/api/namespaces').then(res => res.json()),
             fetch('/api/test').then(res => res.json()),
-            fetch('/api/metrics/all-pods').then(res => res.json()),
-            fetch('/api/metrics/nodes').then(res => res.json())
+            fetch(`/api/metrics/pods/${namespace}`).then(res => res.json()),
+            fetch('/api/metrics/nodes').then(res => res.json()),
+            fetch(`/api/services?namespace=${namespace}`).then(res => res.json())
         ]);
         
         // Сохраняем данные
@@ -69,32 +78,35 @@ async function loadDashboard(showLoading = true) {
             deployments: deploymentsData.deployments || [],
             nodes: nodesData.nodes || [],
             namespaces: namespacesData.namespaces || [],
+            services: servicesData.services || [],
             clusterInfo: clusterInfo
         };
         
         metricsData = {
-            pods: allPodsMetrics.all_metrics || [],
+            pods: podsMetrics.metrics || [],
             nodes: nodesMetrics.nodes || [],
-            clusterUsage: nodesMetrics.cluster_usage || {}
+            clusterUsage: nodesMetrics.cluster_usage || {},
+            services: servicesData.services || []
         };
         
         // Обновляем UI
         updateDashboard();
         
         // Загружаем события и дополнительную информацию
-        loadEvents();
+        loadEvents(namespace);
         loadTopConsumers();
-        loadRecentDeployments();
+        loadRecentDeployments(namespace);
+        loadServices();
         updateNodeMetrics();
         
         if (isFirstLoad) {
             isFirstLoad = false;
-            showToast('Dashboard loaded successfully!', 'success');
+            showToast(`Dashboard loaded successfully! (Namespace: ${namespace})`, 'success');
         }
         
     } catch (error) {
         console.error('Error loading dashboard:', error);
-        showError('Failed to load dashboard data');
+        showError('Failed to load dashboard data: ' + error.message);
         updateConnectionStatus(false);
     } finally {
         if (showLoading) {
@@ -112,6 +124,7 @@ function updateDashboard() {
     updateResourceUsage();
     updateClusterInfo();
     updateChartData();
+    updatePodsTable();
 }
 
 // Обновление статуса кластера
@@ -147,7 +160,7 @@ function updatePodsStatus() {
     document.getElementById('running-pods').textContent = runningPods;
     document.getElementById('pods-progress').style.width = `${podsPercentage}%`;
     document.getElementById('current-pods').textContent = totalPods;
-    document.getElementById('current-pods-bar').style.width = `${Math.min(totalPods * 5, 100)}%`;
+    document.getElementById('current-pods-bar').style.width = `${Math.min(totalPods * 10, 100)}%`;
 }
 
 // Обновление статуса деплойментов
@@ -164,6 +177,87 @@ function updateDeploymentsStatus() {
     document.getElementById('deployments-count').textContent = totalDeployments;
     document.getElementById('ready-deployments').textContent = readyDeployments;
     document.getElementById('deployments-progress').style.width = `${deploymentsPercentage}%`;
+}
+
+// Обновление таблицы подов
+function updatePodsTable() {
+    const podsTableBody = document.getElementById('pods-table');
+    if (!podsTableBody) return;
+    
+    let html = '';
+    const namespace = document.getElementById('namespace-selector').value || 'market';
+    
+    clusterData.pods.forEach(pod => {
+        if (pod.namespace !== namespace) return;
+        
+        // Находим метрики для этого пода
+        const podMetrics = metricsData.pods.find(p => p.pod === pod.name);
+        
+        // Считаем готовые контейнеры
+        const ready = pod.ready ? pod.ready.split('/')[0] : '0';
+        const total = pod.ready ? pod.ready.split('/')[1] : '0';
+        const readyPercent = total > 0 ? Math.round((ready / total) * 100) : 0;
+        
+        // Определяем цвет статуса
+        let statusColor = 'secondary';
+        if (pod.status === 'Running') statusColor = 'success';
+        else if (pod.status === 'Pending') statusColor = 'warning';
+        else if (pod.status === 'Failed') statusColor = 'danger';
+        else if (pod.status === 'Unknown') statusColor = 'dark';
+        
+        html += `
+            <tr>
+                <td>
+                    <strong>${pod.name}</strong>
+                    <div class="small text-muted">${pod.namespace}</div>
+                </td>
+                <td>
+                    <span class="badge bg-${statusColor}">${pod.status}</span>
+                </td>
+                <td>
+                    <div class="d-flex align-items-center">
+                        <div class="me-2" style="min-width: 60px;">
+                            <small>${pod.ready || '0/0'}</small>
+                        </div>
+                        <div class="progress flex-grow-1" style="height: 6px;">
+                            <div class="progress-bar bg-success" style="width: ${readyPercent}%"></div>
+                        </div>
+                    </div>
+                </td>
+                <td>${pod.restarts || 0}</td>
+                <td>
+                    <div class="small">
+                        <div>CPU: ${podMetrics ? podMetrics.cpu_usage : 'N/A'}</div>
+                        <div>Mem: ${podMetrics ? podMetrics.memory_usage : 'N/A'}</div>
+                    </div>
+                </td>
+                <td>${pod.node || 'N/A'}</td>
+                <td>${pod.age || 'N/A'}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-info" onclick="viewPodLogs('${pod.namespace}', '${pod.name}')">
+                            <i class="fas fa-file-alt"></i>
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="viewPodYAML('${pod.namespace}', '${pod.name}')">
+                            <i class="fas fa-code"></i>
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="deletePod('${pod.namespace}', '${pod.name}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+    
+    podsTableBody.innerHTML = html || `
+        <tr>
+            <td colspan="8" class="text-center py-4">
+                <i class="fas fa-cube fa-2x text-muted mb-2"></i>
+                <p class="text-muted">No pods found in ${namespace} namespace</p>
+            </td>
+        </tr>
+    `;
 }
 
 // Обновление статуса нод с метриками
@@ -191,11 +285,11 @@ function updateNodesStatus() {
         const nodeMetrics = metricsData.nodes.find(n => n.name === node.name);
         
         html += `
-            <div class="node-card ${nodeClass}">
+            <div class="node-card mb-3 p-3 border rounded">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
                         <div class="d-flex align-items-center mb-2">
-                            <span class="node-status ${nodeClass}"></span>
+                            <span class="node-status ${nodeClass} me-2"></span>
                             <strong>${node.name}</strong>
                         </div>
                         <div class="small text-muted">
@@ -308,11 +402,15 @@ function updateClusterInfo() {
     if (clusterData.namespaces && clusterData.namespaces.length > 0) {
         let html = '';
         clusterData.namespaces.forEach(ns => {
-            const statusColor = ns.status === 'Active' ? 'success' : 'warning';
+            const isActive = ns.status === 'Active';
+            const statusColor = isActive ? 'success' : 'warning';
+            const badgeClass = document.getElementById('namespace-selector').value === ns.name ? 'border border-primary' : '';
+            
             html += `
-                <span class="badge bg-${statusColor} namespace-badge" 
-                      onclick="filterByNamespace('${ns.name}')">
+                <span class="badge bg-${statusColor} namespace-badge ${badgeClass} me-1 mb-1" 
+                      onclick="filterByNamespace('${ns.name}')" style="cursor: pointer;">
                     ${ns.name}
+                    ${isActive ? '' : ' (inactive)'}
                 </span>
             `;
         });
@@ -330,10 +428,11 @@ function updateClusterInfo() {
 }
 
 // Загрузка событий
-async function loadEvents() {
+async function loadEvents(namespace) {
     try {
+        // В реальном приложении здесь будет вызов API для событий
         // Пока используем симуляцию
-        simulateEvents();
+        simulateEvents(namespace);
         
     } catch (error) {
         console.error('Error loading events:', error);
@@ -341,7 +440,7 @@ async function loadEvents() {
 }
 
 // Симуляция событий (временная реализация)
-function simulateEvents() {
+function simulateEvents(namespace) {
     const events = [
         { type: 'Normal', object: 'market-app', message: 'Successfully assigned pod to node', time: '2m ago' },
         { type: 'Normal', object: 'postgres', message: 'Container image already present', time: '5m ago' },
@@ -360,7 +459,7 @@ function simulateEvents() {
                          event.type === 'Warning' ? 'warning' : 'danger';
         
         html += `
-            <tr class="${typeClass}" onclick="showEventDetails('${event.object}')">
+            <tr class="${typeClass}" onclick="showEventDetails('${event.object}')" style="cursor: pointer;">
                 <td>
                     <span class="badge bg-${typeColor}">${event.type}</span>
                 </td>
@@ -377,8 +476,10 @@ function simulateEvents() {
 // Загрузка топ потребителей ресурсов с реальными метриками
 async function loadTopConsumers() {
     try {
+        const namespace = document.getElementById('namespace-selector').value || 'market';
+        
         if (metricsData.pods && metricsData.pods.length > 0) {
-            updateTopConsumersWithRealMetrics();
+            updateTopConsumersWithRealMetrics(namespace);
         } else {
             simulateTopConsumers();
         }
@@ -389,23 +490,25 @@ async function loadTopConsumers() {
 }
 
 // Обновление топ потребителей с реальными метриками
-function updateTopConsumersWithRealMetrics() {
+function updateTopConsumersWithRealMetrics(namespace) {
     // Сортируем по использованию CPU
     const cpuConsumers = [...metricsData.pods]
+        .filter(pod => pod.namespace === namespace)
         .sort((a, b) => (b.cpu_raw || 0) - (a.cpu_raw || 0))
         .slice(0, 5);
     
     // Сортируем по использованию памяти
     const memoryConsumers = [...metricsData.pods]
+        .filter(pod => pod.namespace === namespace)
         .sort((a, b) => (b.memory_raw || 0) - (a.memory_raw || 0))
         .slice(0, 5);
     
     // Обновляем топ CPU
-    const cpuList = document.querySelectorAll('.card')[8]?.querySelector('.list-group');
+    const cpuList = document.getElementById('top-cpu-consumers');
     if (cpuList) {
         let html = '';
         cpuConsumers.forEach((pod, index) => {
-            const cpuUsage = pod.cpu || '0m';
+            const cpuUsage = pod.cpu_usage || '0m';
             const cpuPercent = pod.cpu_percent || 0;
             
             html += `
@@ -413,7 +516,7 @@ function updateTopConsumersWithRealMetrics() {
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <div class="fw-bold">${pod.pod}</div>
-                            <small class="text-muted">Namespace: ${pod.namespace}</small>
+                            <small class="text-muted">CPU: ${pod.cpu_limit || 'No limit'}</small>
                         </div>
                         <div class="text-end">
                             <span class="badge bg-danger">${cpuUsage}</span>
@@ -435,11 +538,11 @@ function updateTopConsumersWithRealMetrics() {
     }
     
     // Обновляем топ памяти
-    const memoryList = document.querySelectorAll('.card')[9]?.querySelector('.list-group');
+    const memoryList = document.getElementById('top-memory-consumers');
     if (memoryList) {
         let html = '';
         memoryConsumers.forEach((pod, index) => {
-            const memoryUsage = pod.memory || '0Mi';
+            const memoryUsage = pod.memory_usage || '0Mi';
             const memoryPercent = pod.memory_percent || 0;
             
             html += `
@@ -447,7 +550,7 @@ function updateTopConsumersWithRealMetrics() {
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <div class="fw-bold">${pod.pod}</div>
-                            <small class="text-muted">Namespace: ${pod.namespace}</small>
+                            <small class="text-muted">Mem: ${pod.memory_limit || 'No limit'}</small>
                         </div>
                         <div class="text-end">
                             <span class="badge bg-info">${memoryUsage}</span>
@@ -490,7 +593,7 @@ function simulateTopConsumers() {
     ];
     
     // Обновляем топ CPU
-    const cpuList = document.querySelectorAll('.card')[8]?.querySelector('.list-group');
+    const cpuList = document.getElementById('top-cpu-consumers');
     if (cpuList) {
         let html = '';
         cpuConsumers.forEach((pod, index) => {
@@ -515,7 +618,7 @@ function simulateTopConsumers() {
     }
     
     // Обновляем топ памяти
-    const memoryList = document.querySelectorAll('.card')[9]?.querySelector('.list-group');
+    const memoryList = document.getElementById('top-memory-consumers');
     if (memoryList) {
         let html = '';
         memoryConsumers.forEach((pod, index) => {
@@ -541,14 +644,14 @@ function simulateTopConsumers() {
 }
 
 // Загрузка последних деплойментов
-async function loadRecentDeployments() {
+async function loadRecentDeployments(namespace) {
     try {
         const deployments = clusterData.deployments || [];
         const recentDeployments = deployments
             .sort((a, b) => new Date(b.created || 0) - new Date(a.created || 0))
             .slice(0, 5);
         
-        const deploymentsList = document.querySelectorAll('.card')[10]?.querySelector('.list-group');
+        const deploymentsList = document.getElementById('recent-deployments');
         if (deploymentsList) {
             let html = '';
             recentDeployments.forEach(deployment => {
@@ -561,7 +664,7 @@ async function loadRecentDeployments() {
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <div class="fw-bold">${deployment.name}</div>
-                                <small class="text-muted">Namespace: ${deployment.namespace}</small>
+                                <small class="text-muted">Replicas: ${deployment.replicas || 1}</small>
                             </div>
                             <div class="text-end">
                                 <span class="badge bg-${statusColor}">${readyCount}/${totalCount}</span>
@@ -575,7 +678,7 @@ async function loadRecentDeployments() {
             deploymentsList.innerHTML = html || `
                 <div class="list-group-item">
                     <div class="text-center text-muted py-3">
-                        No deployments found
+                        No deployments found in ${namespace}
                     </div>
                 </div>
             `;
@@ -583,6 +686,44 @@ async function loadRecentDeployments() {
         
     } catch (error) {
         console.error('Error loading recent deployments:', error);
+    }
+}
+
+// Загрузка сервисов
+async function loadServices() {
+    try {
+        const services = metricsData.services || [];
+        const servicesList = document.getElementById('services-list');
+        
+        if (servicesList) {
+            let html = '';
+            services.forEach(service => {
+                html += `
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="fw-bold">${service.name}</div>
+                                <small class="text-muted">Type: ${service.type}</small>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-info">${service.clusterIP}</span>
+                                <div class="small text-muted mt-1">Ports: ${service.ports?.join(', ') || 'None'}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            servicesList.innerHTML = html || `
+                <div class="list-group-item">
+                    <div class="text-center text-muted py-3">
+                        No services found
+                    </div>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading services:', error);
     }
 }
 
@@ -595,10 +736,17 @@ function initializeChart() {
         data: {
             labels: generateTimeLabels(),
             datasets: [{
-                label: 'CPU Usage',
+                label: 'CPU Usage (%)',
                 data: generateRandomData(50, 80),
                 borderColor: '#dc3545',
                 backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                tension: 0.4,
+                fill: true
+            }, {
+                label: 'Memory Usage (%)',
+                data: generateRandomData(40, 70),
+                borderColor: '#17a2b8',
+                backgroundColor: 'rgba(23, 162, 184, 0.1)',
                 tension: 0.4,
                 fill: true
             }]
@@ -636,49 +784,48 @@ function updateChartData() {
     if (!resourceChart) return;
     
     const metric = document.getElementById('metric-select').value;
-    let label = '';
-    let color = '';
-    let data = [];
     
-    switch(metric) {
-        case 'cpu':
-            label = 'CPU Usage';
-            color = '#dc3545';
-            data = generateRandomData(50, 80);
-            break;
-        case 'memory':
-            label = 'Memory Usage';
-            color = '#17a2b8';
-            data = generateRandomData(40, 70);
-            break;
-        case 'network':
-            label = 'Network I/O (MB)';
-            color = '#28a745';
-            data = generateRandomData(100, 500, false);
-            break;
-        case 'pods':
-            label = 'Pods Count';
-            color = '#6f42c1';
-            data = generateRandomData(5, 20, false);
-            break;
-    }
-    
-    resourceChart.data.datasets[0].label = label;
-    resourceChart.data.datasets[0].borderColor = color;
-    resourceChart.data.datasets[0].backgroundColor = color + '20';
-    resourceChart.data.datasets[0].data = data;
-    
-    // Обновляем шкалу Y для процентов или абсолютных значений
-    if (metric === 'cpu' || metric === 'memory') {
+    // Обновляем только первый датасет
+    if (metric === 'cpu') {
+        resourceChart.data.datasets[0].label = 'CPU Usage (%)';
+        resourceChart.data.datasets[0].borderColor = '#dc3545';
+        resourceChart.data.datasets[0].backgroundColor = 'rgba(220, 53, 69, 0.1)';
+        resourceChart.data.datasets[0].data = generateRandomData(50, 80);
+        resourceChart.data.datasets[1].hidden = true;
+    } else if (metric === 'memory') {
+        resourceChart.data.datasets[0].label = 'Memory Usage (%)';
+        resourceChart.data.datasets[0].borderColor = '#17a2b8';
+        resourceChart.data.datasets[0].backgroundColor = 'rgba(23, 162, 184, 0.1)';
+        resourceChart.data.datasets[0].data = generateRandomData(40, 70);
+        resourceChart.data.datasets[1].hidden = true;
+    } else if (metric === 'pods') {
+        resourceChart.data.datasets[0].label = 'Pods Count';
+        resourceChart.data.datasets[0].borderColor = '#28a745';
+        resourceChart.data.datasets[0].backgroundColor = 'rgba(40, 167, 69, 0.1)';
+        resourceChart.data.datasets[0].data = generateRandomData(5, 20, false);
+        resourceChart.data.datasets[1].hidden = true;
+        
+        resourceChart.options.scales.y.max = Math.max(...resourceChart.data.datasets[0].data) * 1.2;
+        resourceChart.options.scales.y.ticks.callback = function(value) {
+            return Math.round(value);
+        };
+    } else {
+        // Показываем оба графика
+        resourceChart.data.datasets[0].label = 'CPU Usage (%)';
+        resourceChart.data.datasets[0].borderColor = '#dc3545';
+        resourceChart.data.datasets[0].backgroundColor = 'rgba(220, 53, 69, 0.1)';
+        resourceChart.data.datasets[0].data = generateRandomData(50, 80);
+        resourceChart.data.datasets[0].hidden = false;
+        
+        resourceChart.data.datasets[1].label = 'Memory Usage (%)';
+        resourceChart.data.datasets[1].borderColor = '#17a2b8';
+        resourceChart.data.datasets[1].backgroundColor = 'rgba(23, 162, 184, 0.1)';
+        resourceChart.data.datasets[1].data = generateRandomData(40, 70);
+        resourceChart.data.datasets[1].hidden = false;
+        
         resourceChart.options.scales.y.max = 100;
         resourceChart.options.scales.y.ticks.callback = function(value) {
             return value + '%';
-        };
-    } else {
-        const max = Math.max(...data) * 1.2;
-        resourceChart.options.scales.y.max = max;
-        resourceChart.options.scales.y.ticks.callback = function(value) {
-            return Math.round(value);
         };
     }
     
@@ -740,17 +887,19 @@ function refreshDashboard() {
 function exportDashboard() {
     const data = {
         timestamp: new Date().toISOString(),
+        namespace: document.getElementById('namespace-selector').value || 'market',
         clusterData: {
             pods: clusterData.pods?.length || 0,
             deployments: clusterData.deployments?.length || 0,
             nodes: clusterData.nodes?.length || 0,
-            namespaces: clusterData.namespaces?.length || 0
+            namespaces: clusterData.namespaces?.length || 0,
+            services: clusterData.services?.length || 0
         },
         metrics: {
             totalPods: metricsData.pods?.length || 0,
             clusterUsage: metricsData.clusterUsage || {},
-            topCPUConsumers: metricsData.pods?.slice(0, 5).map(p => ({pod: p.pod, cpu: p.cpu})) || [],
-            topMemoryConsumers: metricsData.pods?.slice(0, 5).map(p => ({pod: p.pod, memory: p.memory})) || []
+            topCPUConsumers: metricsData.pods?.slice(0, 5).map(p => ({pod: p.pod, cpu: p.cpu_usage})) || [],
+            topMemoryConsumers: metricsData.pods?.slice(0, 5).map(p => ({pod: p.pod, memory: p.memory_usage})) || []
         },
         status: {
             cluster: document.getElementById('cluster-status').textContent,
@@ -774,17 +923,84 @@ function exportDashboard() {
     showToast('Dashboard data exported with metrics', 'success');
 }
 
+// Экспорт метрик в CSV
+function exportMetricsToCSV() {
+    if (!metricsData.pods || metricsData.pods.length === 0) {
+        showToast('No metrics data to export', 'warning');
+        return;
+    }
+    
+    const headers = ['Pod', 'Namespace', 'CPU Usage', 'Memory Usage', 'CPU %', 'Memory %', 'CPU Limit', 'Memory Limit'];
+    const rows = metricsData.pods.map(pod => [
+        pod.pod,
+        pod.namespace,
+        pod.cpu_usage || 'N/A',
+        pod.memory_usage || 'N/A',
+        pod.cpu_percent || 0,
+        pod.memory_percent || 0,
+        pod.cpu_limit || 'N/A',
+        pod.memory_limit || 'N/A'
+    ]);
+    
+    const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `k8s-metrics-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showToast('Metrics exported to CSV', 'success');
+}
+
 // Фильтрация по namespace
 function filterByNamespace(namespace) {
-    showToast(`Filtering by namespace: ${namespace}`, 'info');
-    // В реальном приложении здесь будет переход на соответствующую страницу с фильтром
-    window.location.href = `/ui/pods?namespace=${namespace}`;
+    document.getElementById('namespace-selector').value = namespace;
+    refreshDashboard();
 }
 
 // Показать детали события
 function showEventDetails(objectName) {
     showToast(`Showing details for: ${objectName}`, 'info');
     // В реальном приложении здесь будет открытие модального окна с деталями
+}
+
+// Функции для работы с подами
+function viewPodLogs(namespace, podName) {
+    window.open(`/ui/pods?logs=${namespace}/${podName}`, '_blank');
+}
+
+function viewPodYAML(namespace, podName) {
+    window.open(`/api/pod/yaml/${namespace}/${podName}`, '_blank');
+}
+
+async function deletePod(namespace, podName) {
+    if (!confirm(`Are you sure you want to delete pod ${podName} in namespace ${namespace}?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/pod/${namespace}/${podName}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showToast(`Pod ${podName} deleted successfully`, 'success');
+            setTimeout(() => refreshDashboard(), 2000);
+        } else {
+            const error = await response.json();
+            showToast(`Failed to delete pod: ${error.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Failed to delete pod: ${error.message}`, 'error');
+    }
 }
 
 // Быстрое развертывание приложения
@@ -795,7 +1011,7 @@ function deployQuickApp() {
 
 async function confirmQuickDeploy() {
     const appType = document.getElementById('quick-app-type').value;
-    const namespace = document.getElementById('quick-namespace').value;
+    const namespace = document.getElementById('quick-namespace').value || 'market';
     const replicas = parseInt(document.getElementById('quick-replicas').value) || 2;
     
     const apps = {
@@ -807,8 +1023,30 @@ async function confirmQuickDeploy() {
     const app = apps[appType];
     
     try {
-        // В реальном приложении здесь будет вызов API
-        console.log('Quick deploying:', { ...app, namespace, replicas });
+        // Создаем простой deployment YAML
+        const deploymentYAML = `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${app.name}
+  namespace: ${namespace}
+spec:
+  replicas: ${replicas}
+  selector:
+    matchLabels:
+      app: ${app.name}
+  template:
+    metadata:
+      labels:
+        app: ${app.name}
+    spec:
+      containers:
+      - name: ${app.name}
+        image: ${app.image}
+        ports:
+        - containerPort: ${app.port}`;
+        
+        // В реальном приложении здесь будет вызов API для создания deployment
+        console.log('Creating deployment:', deploymentYAML);
         
         showToast(`Deploying ${app.name} to ${namespace}...`, 'info');
         
@@ -849,7 +1087,6 @@ async function confirmScaleAll() {
     }
     
     try {
-        // В реальном приложении здесь будет масштабирование
         showToast(`Scaling deployments in ${namespaces.join(', ')} by ${factor}x`, 'info');
         
         // Закрываем модальное окно
@@ -872,7 +1109,6 @@ async function restartAll() {
     try {
         showToast('Restarting all deployments...', 'info');
         
-        // В реальном приложении здесь будет рестарт
         // Пока просто обновляем дашборд
         setTimeout(() => refreshDashboard(), 3000);
         
@@ -890,7 +1126,6 @@ async function cleanupCluster() {
     try {
         showToast('Cleaning up cluster resources...', 'info');
         
-        // В реальном приложении здесь будет очистка
         // Пока просто обновляем дашборд
         setTimeout(() => refreshDashboard(), 2000);
         
@@ -901,12 +1136,38 @@ async function cleanupCluster() {
 
 // Вспомогательные функции
 function showLoadingState() {
-    // Можно добавить overlay или спиннер
-    document.body.style.cursor = 'wait';
+    // Показываем overlay с спиннером
+    let overlay = document.getElementById('loading-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'loading-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 99999;
+        `;
+        overlay.innerHTML = `
+            <div class="spinner-border text-light" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    }
+    overlay.style.display = 'flex';
 }
 
 function hideLoadingState() {
-    document.body.style.cursor = 'default';
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
 }
 
 function showError(message) {
@@ -923,6 +1184,7 @@ function showToast(message, type = 'info') {
         right: 20px;
         z-index: 9999;
         min-width: 300px;
+        animation: slideIn 0.3s ease-out;
     `;
     toast.innerHTML = `
         ${message}
@@ -931,8 +1193,25 @@ function showToast(message, type = 'info') {
     
     document.body.appendChild(toast);
     
+    // Добавляем CSS для анимации
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+    
     setTimeout(() => {
         toast.remove();
+        style.remove();
     }, 3000);
 }
 

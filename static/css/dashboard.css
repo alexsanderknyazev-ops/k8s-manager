@@ -1,192 +1,234 @@
-/* Добавьте эти стили в конец файла */
-
-/* Стили для метрик нод */
-.node-metrics {
-    background: rgba(0, 0, 0, 0.02);
-    border-radius: 6px;
-    padding: 10px;
-    border: 1px solid #eee;
+/* Основные стили для дашборда */
+:root {
+    --primary-color: #2c3e50;
+    --secondary-color: #3498db;
+    --success-color: #2ecc71;
+    --warning-color: #f39c12;
+    --danger-color: #e74c3c;
+    --info-color: #17a2b8;
+    --light-color: #ecf0f1;
+    --dark-color: #34495e;
 }
 
-.node-metrics .progress {
-    margin-top: 5px;
-}
-
-/* Стили для топ потребителей */
-.top-consumer-item .progress {
-    background-color: rgba(0, 0, 0, 0.1);
-}
-
-.top-consumer-item:hover {
+body {
+    font-family: 'Inter', sans-serif;
     background-color: #f8f9fa;
+    color: #333;
 }
 
-/* Индикаторы использования */
-.usage-indicator {
+.navbar-brand {
+    font-weight: 600;
+}
+
+.card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.status-card {
+    border-left: 4px solid var(--secondary-color);
+}
+
+.avatar-lg {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background-color: rgba(52, 152, 219, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.progress {
+    border-radius: 10px;
+}
+
+.progress-bar {
+    border-radius: 10px;
+}
+
+.badge {
+    font-weight: 500;
+}
+
+.table th {
+    font-weight: 600;
+    color: var(--dark-color);
+    border-bottom: 2px solid var(--light-color);
+}
+
+.table tbody tr:hover {
+    background-color: rgba(52, 152, 219, 0.05);
+}
+
+.btn {
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+.btn-outline-primary {
+    border-width: 2px;
+}
+
+.list-group-item {
+    border: none;
+    padding: 15px;
+    margin-bottom: 5px;
+    border-radius: 8px !important;
+}
+
+.list-group-item:hover {
+    background-color: var(--light-color);
+}
+
+.node-card {
+    background-color: white;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.node-card:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.node-status {
     display: inline-block;
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    margin-right: 5px;
+    margin-right: 8px;
 }
 
-.usage-low {
-    background-color: #28a745;
+.node-status.ready {
+    background-color: var(--success-color);
+    animation: pulse 2s infinite;
 }
 
-.usage-medium {
-    background-color: #ffc107;
+.node-status.not-ready {
+    background-color: var(--danger-color);
 }
 
-.usage-high {
-    background-color: #dc3545;
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        opacity: 1;
+    }
 }
 
-/* Карточки с метриками */
-.metrics-card {
-    border-left: 4px solid #007bff;
-}
-
-.metrics-card.warning {
-    border-left-color: #ffc107;
-}
-
-.metrics-card.danger {
-    border-left-color: #dc3545;
-}
-
-/* Анимация для обновления метрик */
-@keyframes metricUpdate {
-    0% { background-color: transparent; }
-    50% { background-color: rgba(0, 123, 255, 0.1); }
-    100% { background-color: transparent; }
-}
-
-.metric-updated {
-    animation: metricUpdate 1s ease;
-}
-
-/* Таблицы с метриками */
-.metrics-table th {
-    font-weight: 600;
-    background-color: #f8f9fa;
-}
-
-.metrics-table tr:hover {
-    background-color: #f8f9fa;
-}
-
-/* Кнопки действий с метриками */
-.metric-action {
+.namespace-badge {
+    cursor: pointer;
     transition: all 0.2s;
 }
 
-.metric-action:hover {
-    transform: translateY(-2px);
+.namespace-badge:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* Стили для графиков метрик */
-.metrics-chart-container {
-    position: relative;
-    height: 200px;
+/* Анимации */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-/* Панель статуса метрик */
-.metrics-status-bar {
-    height: 4px;
-    border-radius: 2px;
-    background: linear-gradient(90deg, #28a745, #ffc107, #dc3545);
+.card {
+    animation: fadeIn 0.5s ease-out;
 }
 
-/* Сетка для отображения метрик */
-.metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 15px;
+/* Кастомные скроллбары */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
 }
 
-/* Карточка метрики */
-.metric-card {
-    background: white;
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    padding: 15px;
-    box-shadow: 0 2px 4px rgba(0,0,0,.1);
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
 }
 
-.metric-card h6 {
-    color: #6c757d;
-    font-size: 0.9rem;
-    margin-bottom: 10px;
+::-webkit-scrollbar-thumb {
+    background: #bdc3c7;
+    border-radius: 10px;
 }
 
-.metric-card .value {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: #343a40;
+::-webkit-scrollbar-thumb:hover {
+    background: #95a5a6;
 }
 
-.metric-card .trend {
-    font-size: 0.85rem;
-    margin-top: 5px;
-}
-
-.trend.up {
-    color: #28a745;
-}
-
-.trend.down {
-    color: #dc3545;
-}
-
-.trend.flat {
-    color: #6c757d;
-}
-
-/* Адаптивность для мобильных устройств */
+/* Адаптивность */
 @media (max-width: 768px) {
-    .metrics-grid {
-        grid-template-columns: 1fr;
+    .card {
+        margin-bottom: 15px;
     }
     
-    .node-metrics .row {
-        flex-direction: column;
+    .table-responsive {
+        font-size: 14px;
     }
     
-    .node-metrics .col-6 {
-        width: 100%;
-        margin-bottom: 10px;
+    .btn-group {
+        flex-wrap: wrap;
+    }
+    
+    .navbar-text select {
+        margin-top: 10px;
     }
 }
 
-/* Стили для всплывающих подсказок метрик */
-.metric-tooltip {
-    position: absolute;
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 8px 12px;
-    border-radius: 4px;
-    font-size: 0.85rem;
-    z-index: 1000;
-    pointer-events: none;
+/* Улучшенные цвета для состояний */
+.bg-success {
+    background-color: var(--success-color) !important;
 }
 
-/* Стили для легенды метрик */
-.metrics-legend {
-    display: flex;
-    gap: 15px;
-    margin-top: 10px;
+.bg-warning {
+    background-color: var(--warning-color) !important;
 }
 
-.legend-item {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.85rem;
+.bg-danger {
+    background-color: var(--danger-color) !important;
 }
 
-.legend-color {
-    width: 12px;
-    height: 12px;
-    border-radius: 2px;
+.bg-info {
+    background-color: var(--info-color) !important;
+}
+
+.bg-primary {
+    background-color: var(--secondary-color) !important;
+}
+
+/* Стили для тултипов и подсказок */
+[title] {
+    cursor: help;
+}
+
+/* Анимация для обновления данных */
+@keyframes highlight {
+    0% {
+        background-color: rgba(52, 152, 219, 0.2);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+.updating {
+    animation: highlight 1s ease-in-out;
 }
