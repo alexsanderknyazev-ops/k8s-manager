@@ -148,6 +148,7 @@ body {
     padding: 15px;
     max-height: 500px;
     overflow-y: auto;
+    position: relative;
 }
 
 .logs-pre {
@@ -157,6 +158,218 @@ body {
     margin: 0;
     white-space: pre-wrap;
     word-wrap: break-word;
+    min-height: 300px;
+}
+
+.logs-controls {
+    position: sticky;
+    top: 0;
+    background-color: #2d2d2d;
+    padding: 8px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    z-index: 10;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Цвета для разных типов логов */
+.log-info {
+    color: #4ec9b0;
+}
+
+.log-warning {
+    color: #ffc107;
+    background-color: rgba(255, 193, 7, 0.1);
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.log-error {
+    color: #f48771;
+    background-color: rgba(244, 135, 113, 0.1);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: bold;
+}
+
+.log-success {
+    color: #28a745;
+    background-color: rgba(40, 167, 69, 0.1);
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.log-system {
+    color: #569cd6;
+}
+
+.log-timestamp {
+    color: #808080;
+    font-size: 0.8rem;
+}
+
+.log-pod {
+    color: #ce9178;
+    font-weight: bold;
+}
+
+/* Анимация для новых логов */
+@keyframes highlightNewLog {
+    0% { background-color: rgba(255, 255, 255, 0.1); }
+    100% { background-color: transparent; }
+}
+
+.new-log {
+    animation: highlightNewLog 1s ease-out;
+}
+
+/* Стили для фильтрации */
+.filter-active {
+    background-color: #007bff !important;
+    color: white !important;
+}
+
+/* Статус логов */
+#logs-status {
+    font-size: 0.9rem;
+    padding: 10px;
+    border-left: 4px solid #007bff;
+}
+
+#logs-status.connecting {
+    border-left-color: #ffc107;
+}
+
+#logs-status.connected {
+    border-left-color: #28a745;
+}
+
+#logs-status.error {
+    border-left-color: #dc3545;
+}
+
+/* Кнопки управления логами */
+#start-realtime-btn.active {
+    background-color: #28a745;
+    color: white;
+}
+
+#stop-realtime-btn.active {
+    background-color: #dc3545;
+    color: white;
+}
+
+/* Стили для таблицы лог стримов */
+#logstream-sessions-table {
+    font-size: 0.75rem;
+}
+
+#logstream-sessions-table td {
+    padding: 4px 8px;
+    vertical-align: middle;
+}
+
+#logstream-sessions-table th {
+    padding: 6px 8px;
+    background-color: #f8f9fa;
+    font-weight: 600;
+}
+
+/* Анимация для живого стрима */
+@keyframes pulse-stream {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.fa-stream.text-success {
+    animation: pulse-stream 2s infinite;
+}
+
+/* Стили для модального окна логов */
+#logsModal .modal-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+#logsModal .modal-body {
+    padding: 20px;
+}
+
+/* Панель управления логами */
+.log-controls-panel {
+    background-color: #f8f9fa;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 15px;
+    border: 1px solid #dee2e6;
+}
+
+/* Счетчик логов */
+#log-count {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+/* Адаптивность для модального окна логов */
+@media (max-width: 768px) {
+    .logs-container {
+        max-height: 400px;
+    }
+    
+    .log-controls-panel {
+        flex-wrap: wrap;
+    }
+    
+    #logsModal .btn-group {
+        margin-top: 10px;
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* Скроллбар для контейнера логов */
+.logs-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.logs-container::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+.logs-container::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.logs-container::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}
+
+/* Индикатор онлайн/офлайн */
+.status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+
+.status-online {
+    background-color: #28a745;
+    animation: pulse 2s infinite;
+}
+
+.status-offline {
+    background-color: #dc3545;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
 }
 
 /* YAML просмотрщик */
@@ -209,27 +422,6 @@ body {
     align-items: center;
     justify-content: center;
     z-index: 1000;
-}
-
-/* Адаптивность */
-@media (max-width: 768px) {
-    .table-responsive {
-        font-size: 0.85rem;
-    }
-    
-    .btn-action {
-        width: 28px;
-        height: 28px;
-        font-size: 0.8rem;
-    }
-    
-    .stat-card h5 {
-        font-size: 1.1rem;
-    }
-    
-    #portforward-sessions-card {
-        font-size: 0.7rem;
-    }
 }
 
 /* Анимации */
@@ -287,36 +479,6 @@ canvas {
     display: block;
     max-width: 100%;
     max-height: 100%;
-}
-
-/* Модальные окна для метрик */
-.container-list .card {
-    margin-bottom: 0.5rem;
-}
-
-.container-list .card-header {
-    padding: 0.5rem 1rem;
-    font-size: 0.9rem;
-}
-
-.container-list .card-body {
-    padding: 0.75rem;
-    font-size: 0.85rem;
-}
-
-/* Таблица метрик контейнеров */
-#container-metrics-table {
-    font-size: 0.85rem;
-}
-
-#container-metrics-table th {
-    font-weight: 600;
-    background-color: #f8f9fa;
-}
-
-#container-metrics-table td, #container-metrics-table th {
-    padding: 0.5rem;
-    vertical-align: middle;
 }
 
 /* Уведомления */

@@ -13,11 +13,17 @@ let detailedMemoryChart = null;
 let portForwardSessions = [];
 let currentPortForwardSession = null;
 
+// Log Streams
+let logWebSocket = null;
+let logMessages = [];
+let activeLogStreams = [];
+
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     loadPods();
     loadMetrics();
     loadPortForwardSessions();
+    loadLogStreamSessions();
     setupEventListeners();
     initResourceChart();
     initMainCharts();
@@ -27,7 +33,6 @@ document.addEventListener('DOMContentLoaded', function() {
 function initResourceChart() {
     const ctx = document.getElementById('resourceChart').getContext('2d');
     
-    // Уничтожаем старый график если есть
     if (resourceChart) {
         resourceChart.destroy();
     }
@@ -95,6 +100,7 @@ function setupEventListeners() {
         loadPods();
         loadMetrics();
         loadPortForwardSessions();
+        loadLogStreamSessions();
     });
     
     // Поиск
@@ -110,14 +116,418 @@ function setupEventListeners() {
         loadPods();
         loadMetrics();
         loadPortForwardSessions();
+        loadLogStreamSessions();
     });
 
-    // Автоматическое обновление port-forward сессий каждые 5 секунд
+    // Фильтр логов
+    document.getElementById('log-filter').addEventListener('input', debounce(applyLogFilter, 300));
+
+    // Автоматическое обновление
     setInterval(() => {
         if (document.visibilityState === 'visible') {
             loadPortForwardSessions();
+            loadLogStreamSessions();
         }
     }, 5000);
+}
+
+// ===== LOGS FUNCTIONS =====
+
+// Показать модальное окно для логов (старое название для совместимости)
+async function showLogs(namespace, podName) {
+    currentPod = { namespace, name: podName };
+    
+    document.getElementById('logs-pod-name').textContent = podName;
+    document.getElementById('logs-status').className = 'alert alert-info';
+    document.getElementById('logs-status').innerHTML = `
+        <i class="fas fa-info-circle me-2"></i>
+        Ready to view logs for pod <strong>${podName}</strong> in namespace <strong>${namespace}</strong>
+    `;
+    
+    document.getElementById('logs-content').innerHTML = '';
+    document.getElementById('start-realtime-btn').style.display = 'block';
+    document.getElementById('stop-realtime-btn').style.display = 'none';
+    document.getElementById('log-filter').value = '';
+    document.getElementById('log-count').textContent = '0 logs';
+    
+    logMessages = [];
+    
+    const modal = new bootstrap.Modal(document.getElementById('logsModal'));
+    modal.show();
+    
+    // Автоматически запускаем логи
+    setTimeout(() => startRealtimeLogs(), 500);
+}
+
+// Загрузить активные лог стримы
+async function loadLogStreamSessions() {
+    try {
+        const response = await fetch('/api/logs/streams');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const data = await response.json();
+        activeLogStreams = data.streams || [];
+        
+        updateLogStreamSessionsUI(activeLogStreams);
+        
+    } catch (error) {
+        console.error('Error loading log streams:', error);
+    }
+}
+
+// Обновить UI с активными лог стримами
+function updateLogStreamSessionsUI(streams) {
+    const card = document.getElementById('logstream-sessions-card');
+    const tbody = document.getElementById('logstream-sessions-body');
+    
+    // Фильтруем только для текущего namespace
+    const activeStreams = streams.filter(stream => 
+        stream.namespace === currentNamespace || currentNamespace === 'all'
+    );
+    
+    if (activeStreams.length === 0) {
+        card.style.display = 'none';
+        return;
+    }
+    
+    card.style.display = 'block';
+    
+    let html = '';
+    activeStreams.forEach(stream => {
+        html += `
+            <tr>
+                <td>
+                    <small>
+                        <i class="fas fa-stream me-1 ${stream.follow ? 'text-success' : 'text-info'}"></i>
+                        ${stream.pod}
+                    </small>
+                </td>
+                <td>
+                    <span class="badge ${stream.follow ? 'bg-success' : 'bg-info'} badge-sm">
+                        ${stream.follow ? 'Following' : 'Static'}
+                    </span>
+                </td>
+                <td>
+                    <span class="badge bg-success badge-sm">
+                        <i class="fas fa-circle status-online"></i> Active
+                    </span>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger btn-action-sm" 
+                            onclick="stopLogStreamSession('${stream.id}')" title="Stop">
+                        <i class="fas fa-stop"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+// Остановить конкретный лог стрим
+async function stopLogStreamSession(streamId) {
+    try {
+        const response = await fetch(`/api/logs/stream/${streamId}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        showToast('Log stream stopped', 'info');
+        setTimeout(() => loadLogStreamSessions(), 500);
+        
+    } catch (error) {
+        showToast(`Failed to stop log stream: ${error.message}`, 'error');
+    }
+}
+
+// Запустить реалтайм логи
+// В pods.js в функции startRealtimeLogs добавьте:
+function startRealtimeLogs() {
+    if (!currentPod) {
+        console.error('No current pod selected');
+        showToast('No pod selected', 'error');
+        return;
+    }
+    
+    const namespace = currentPod.namespace;
+    const podName = currentPod.name;
+    const tailLines = document.getElementById('log-tail').value;
+    const follow = document.getElementById('log-follow').checked;
+    const bufferSize = document.getElementById('log-buffer').value;
+    
+    console.log('Starting WebSocket with params:', {
+        namespace,
+        podName,
+        tailLines,
+        follow,
+        bufferSize
+    });
+    
+    // Останавливаем предыдущее соединение если есть
+    if (logWebSocket) {
+        console.log('Stopping existing WebSocket');
+        stopRealtimeLogs();
+    }
+    
+    // Создаем WebSocket соединение
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/logs/stream/${namespace}/${podName}?tail=${tailLines}&follow=${follow}&buffer=${bufferSize}`;
+    
+    console.log('WebSocket URL:', wsUrl);
+    
+    logWebSocket = new WebSocket(wsUrl);
+    
+    // Обновляем UI
+    document.getElementById('start-realtime-btn').style.display = 'none';
+    document.getElementById('stop-realtime-btn').style.display = 'block';
+    document.getElementById('logs-status').className = 'alert alert-warning connecting';
+    document.getElementById('logs-status').innerHTML = `
+        <i class="fas fa-spinner fa-spin me-2"></i>
+        Connecting to pod <strong>${podName}</strong>...
+    `;
+    
+    // Обработчики WebSocket
+    logWebSocket.onopen = function() {
+        console.log('WebSocket opened successfully');
+        document.getElementById('logs-status').className = 'alert alert-success connected';
+        document.getElementById('logs-status').innerHTML = `
+            <i class="fas fa-check-circle me-2"></i>
+            Connected to pod <strong>${podName}</strong>. Streaming logs...
+        `;
+        showToast('Live logs started', 'success');
+    };
+    
+    logWebSocket.onmessage = function(event) {
+        console.log('WebSocket message received:', event.data);
+        try {
+            const message = JSON.parse(event.data);
+            handleLogMessage(message);
+        } catch (error) {
+            console.error('Error parsing log message:', error);
+            addLogToDisplay('error', `Error: ${event.data}`);
+        }
+    };
+    
+    logWebSocket.onerror = function(error) {
+        console.error('WebSocket error:', error);
+        document.getElementById('logs-status').className = 'alert alert-danger error';
+        document.getElementById('logs-status').innerHTML = `
+            <i class="fas fa-exclamation-circle me-2"></i>
+            Connection error. Check console for details.
+        `;
+        showToast('WebSocket connection error', 'error');
+    };
+    
+    logWebSocket.onclose = function(event) {
+        console.log('WebSocket closed:', event.code, event.reason);
+        document.getElementById('start-realtime-btn').style.display = 'block';
+        document.getElementById('stop-realtime-btn').style.display = 'none';
+        document.getElementById('logs-status').className = 'alert alert-info';
+        document.getElementById('logs-status').innerHTML = `
+            <i class="fas fa-info-circle me-2"></i>
+            Connection closed (code: ${event.code})
+        `;
+        logWebSocket = null;
+    };
+}
+
+// Остановить реалтайм логи
+function stopRealtimeLogs() {
+    if (logWebSocket) {
+        logWebSocket.close();
+        logWebSocket = null;
+    }
+    
+    document.getElementById('start-realtime-btn').style.display = 'block';
+    document.getElementById('stop-realtime-btn').style.display = 'none';
+    document.getElementById('logs-status').className = 'alert alert-info';
+    document.getElementById('logs-status').innerHTML = `
+        <i class="fas fa-info-circle me-2"></i>
+        Live logs stopped
+    `;
+    
+    showToast('Live logs stopped', 'info');
+}
+
+// Обработать сообщение лога
+function handleLogMessage(message) {
+    const { type, message: content, time } = message;
+    
+    // Добавляем в массив сообщений
+    logMessages.push({
+        type,
+        content,
+        time,
+        timestamp: new Date(time)
+    });
+    
+    // Ограничиваем размер буфера
+    const bufferSize = parseInt(document.getElementById('log-buffer').value) || 1000;
+    if (logMessages.length > bufferSize) {
+        logMessages = logMessages.slice(-bufferSize);
+    }
+    
+    // Добавляем на экран
+    addLogToDisplay(type, content, time);
+    
+    // Обновляем счетчик
+    document.getElementById('log-count').textContent = `${logMessages.length} logs`;
+    
+    // Автоскролл
+    if (document.getElementById('autoscroll').checked) {
+        const container = document.getElementById('logs-content');
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+// Добавить лог на экран
+function addLogToDisplay(type, content, timestamp) {
+    const container = document.getElementById('logs-content');
+    const timestampStr = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+    
+    let logClass = 'log-line';
+    let icon = '';
+    
+    switch(type) {
+        case 'info':
+            logClass += ' log-info';
+            icon = '<i class="fas fa-info-circle me-1"></i>';
+            break;
+        case 'warning':
+            logClass += ' log-warning';
+            icon = '<i class="fas fa-exclamation-triangle me-1"></i>';
+            break;
+        case 'error':
+            logClass += ' log-error';
+            icon = '<i class="fas fa-exclamation-circle me-1"></i>';
+            break;
+        case 'success':
+            logClass += ' log-success';
+            icon = '<i class="fas fa-check-circle me-1"></i>';
+            break;
+        case 'log':
+            logClass += ' log-system';
+            icon = '<i class="fas fa-file-alt me-1"></i>';
+            break;
+        default:
+            logClass += ' log-system';
+    }
+    
+    const logElement = document.createElement('div');
+    logElement.className = `${logClass} new-log`;
+    logElement.innerHTML = `
+        <span class="log-timestamp">[${timestampStr}]</span>
+        ${icon}
+        <span class="log-content">${escapeHtml(content)}</span>
+    `;
+    
+    // Применяем фильтр если есть
+    const filter = document.getElementById('log-filter').value.toLowerCase();
+    if (filter && !content.toLowerCase().includes(filter)) {
+        logElement.style.display = 'none';
+    }
+    
+    container.appendChild(logElement);
+    
+    // Удаляем класс анимации через 1 секунду
+    setTimeout(() => {
+        logElement.classList.remove('new-log');
+    }, 1000);
+}
+
+// Очистить логи
+function clearLogs() {
+    document.getElementById('logs-content').innerHTML = '';
+    logMessages = [];
+    document.getElementById('log-count').textContent = '0 logs';
+}
+
+// Скачать логи
+function downloadLogs() {
+    if (logMessages.length === 0) {
+        showToast('No logs to download', 'warning');
+        return;
+    }
+    
+    let logText = '';
+    logMessages.forEach(log => {
+        const timestamp = log.timestamp.toLocaleString();
+        logText += `[${timestamp}] [${log.type.toUpperCase()}] ${log.content}\n`;
+    });
+    
+    const blob = new Blob([logText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `logs-${currentPod.name}-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showToast('Logs downloaded', 'success');
+}
+
+// Фильтровать логи
+function filterLogs(type) {
+    const container = document.getElementById('logs-content');
+    const logLines = container.querySelectorAll('.log-line');
+    const buttons = document.querySelectorAll('.btn-group .btn');
+    
+    // Сбрасываем все кнопки
+    buttons.forEach(btn => {
+        btn.classList.remove('active', 'filter-active');
+    });
+    
+    if (type === 'all') {
+        // Показываем все логи
+        logLines.forEach(line => {
+            line.style.display = 'block';
+        });
+        
+        // Активируем кнопку All
+        const allBtn = document.querySelector('.btn-group .btn[onclick*="all"]');
+        if (allBtn) {
+            allBtn.classList.add('active', 'filter-active');
+        }
+        return;
+    }
+    
+    // Активируем выбранную кнопку
+    const activeBtn = document.querySelector(`.btn-group .btn[onclick*="${type}"]`);
+    if (activeBtn) {
+        activeBtn.classList.add('active', 'filter-active');
+    }
+    
+    // Фильтруем логи по типу
+    logLines.forEach(line => {
+        const hasClass = line.className.includes(`log-${type}`);
+        line.style.display = hasClass ? 'block' : 'none';
+    });
+}
+
+// Применить фильтр из input
+function applyLogFilter() {
+    const filter = document.getElementById('log-filter').value.toLowerCase();
+    const container = document.getElementById('logs-content');
+    const logLines = container.querySelectorAll('.log-line');
+    
+    logLines.forEach(line => {
+        const content = line.querySelector('.log-content').textContent.toLowerCase();
+        line.style.display = content.includes(filter) ? 'block' : 'none';
+    });
+}
+
+// Очистить фильтр
+function clearLogFilter() {
+    document.getElementById('log-filter').value = '';
+    const container = document.getElementById('logs-content');
+    const logLines = container.querySelectorAll('.log-line');
+    logLines.forEach(line => {
+        line.style.display = 'block';
+    });
 }
 
 // ===== PORT-FORWARDING FUNCTIONS =====
@@ -262,7 +672,6 @@ async function loadPortForwardSessions() {
         
     } catch (error) {
         console.error('Error loading port-forward sessions:', error);
-        // Не показываем ошибку пользователю, чтобы не мешать основному функционалу
     }
 }
 
@@ -388,7 +797,6 @@ async function loadMetrics() {
     try {
         const response = await fetch(`/api/metrics/pods/${currentNamespace}`);
         if (!response.ok) {
-            // Если метрики недоступны, показываем предупреждение
             if (response.status === 503 || response.status === 404) {
                 showToast('Metrics server not available. Install Metrics Server first.', 'warning');
                 return;
@@ -406,7 +814,7 @@ async function loadMetrics() {
             
             updateResourceChart(data.metrics);
             updateTotalMetrics(data.metrics);
-            renderPodsTable(allPods); // Перерисовываем таблицу с метриками
+            renderPodsTable(allPods);
             showMetricsCharts();
         } else {
             showToast('No metrics data available', 'info');
@@ -476,9 +884,8 @@ function updateResourceChart(metrics) {
         totalMemory += metric.memory_raw || 0;
     });
     
-    // Для графика используем примерные лимиты
-    const cpuLimit = Math.max(totalCPU * 2, 1000); // Примерный лимит
-    const memoryLimit = Math.max(totalMemory * 2, 100 * 1024 * 1024); // 100MB примерный лимит
+    const cpuLimit = Math.max(totalCPU * 2, 1000);
+    const memoryLimit = Math.max(totalMemory * 2, 100 * 1024 * 1024);
     
     const cpuPercent = Math.min((totalCPU / cpuLimit) * 100, 100);
     const memoryPercent = Math.min((totalMemory / memoryLimit) * 100, 100);
@@ -489,7 +896,6 @@ function updateResourceChart(metrics) {
         Math.max(0, 100 - cpuPercent - memoryPercent)
     ];
     
-    // Обновляем цвета в зависимости от нагрузки
     resourceChart.data.datasets[0].backgroundColor = [
         cpuPercent > 80 ? '#dc3545' : cpuPercent > 50 ? '#ffc107' : '#007bff',
         memoryPercent > 80 ? '#dc3545' : memoryPercent > 50 ? '#ffc107' : '#28a745',
@@ -535,10 +941,9 @@ function updateCharts() {
     
     if (metrics.length === 0) return;
     
-    // Сортируем по использованию CPU
     metrics.sort((a, b) => (b.cpu_raw || 0) - (a.cpu_raw || 0));
     
-    const topPods = metrics.slice(0, 8); // Берем топ-8 подов
+    const topPods = metrics.slice(0, 8);
     
     // Обновляем график CPU
     const cpuCtx = document.getElementById('cpuChart').getContext('2d');
@@ -584,7 +989,7 @@ function updateCharts() {
             labels: topPods.map(m => m.pod.substring(0, 20)),
             datasets: [{
                 label: 'Memory Usage',
-                data: topPods.map(m => (m.memory_raw || 0) / (1024 * 1024)), // Конвертируем в MB
+                data: topPods.map(m => (m.memory_raw || 0) / (1024 * 1024)),
                 backgroundColor: '#28a745',
                 borderColor: '#1e7e34',
                 borderWidth: 1
@@ -609,7 +1014,7 @@ function updateCharts() {
     });
 }
 
-// Рендер таблицы подов с метриками И кнопкой Port-forward
+// Рендер таблицы подов
 function renderPodsTable(pods) {
     const tbody = document.getElementById('pods-table-body');
     
@@ -639,7 +1044,6 @@ function renderPodsTable(pods) {
         return;
     }
     
-    // Подсчитываем статистику для спиннера
     document.getElementById('stats-count').textContent = filteredPods.length;
     
     let html = '';
@@ -663,6 +1067,11 @@ function renderPodsTable(pods) {
             session.pod === podName && session.namespace === namespace && session.status === 'running'
         );
         
+        // Проверяем, есть ли активный лог стрим для этого пода
+        const hasActiveLogStream = activeLogStreams.some(stream => 
+            stream.pod === podName && stream.namespace === namespace
+        );
+        
         html += `
             <tr data-pod-name="${podName}" data-namespace="${namespace}">
                 <td>
@@ -670,7 +1079,8 @@ function renderPodsTable(pods) {
                         <i class="fas fa-cube me-2 text-primary"></i>
                         <strong>${highlightSearch(podName, searchTerm)}</strong>
                         ${pod.ip ? `<small class="text-muted ms-2">(${pod.ip})</small>` : ''}
-                        ${hasActivePortForward ? `<i class="fas fa-exchange-alt text-success ms-2" title="Active Port-forward"></i>` : ''}
+                        ${hasActivePortForward ? `<i class="fas fa-exchange-alt text-success ms-1" title="Active Port-forward"></i>` : ''}
+                        ${hasActiveLogStream ? `<i class="fas fa-stream text-warning ms-1" title="Active Log Stream"></i>` : ''}
                     </div>
                 </td>
                 <td><span class="badge bg-secondary">${namespace}</span></td>
@@ -729,6 +1139,11 @@ function renderPodsTable(pods) {
                                 title="Port Forward">
                             <i class="fas fa-exchange-alt"></i>
                         </button>
+                        <button class="btn btn-action btn-outline-secondary btn-sm" 
+                                onclick="showLogs('${namespace}', '${podName}')"
+                                title="Logs">
+                            <i class="fas fa-file-alt"></i>
+                        </button>
                         <button class="btn btn-action btn-outline-info btn-sm" 
                                 onclick="showPodMetrics('${namespace}', '${podName}')"
                                 title="Metrics">
@@ -738,11 +1153,6 @@ function renderPodsTable(pods) {
                                 onclick="showPodDetails('${namespace}', '${podName}')"
                                 title="Details">
                             <i class="fas fa-info"></i>
-                        </button>
-                        <button class="btn btn-action btn-outline-secondary btn-sm" 
-                                onclick="showLogs('${namespace}', '${podName}')"
-                                title="Logs">
-                            <i class="fas fa-file-alt"></i>
                         </button>
                         <button class="btn btn-action btn-outline-warning btn-sm" 
                                 onclick="showConfig('${namespace}', '${podName}')"
@@ -762,7 +1172,6 @@ function renderPodsTable(pods) {
     
     tbody.innerHTML = html;
     
-    // Добавляем обработчики кликов на строки
     tbody.querySelectorAll('tr[data-pod-name]').forEach(row => {
         row.addEventListener('click', (e) => {
             if (!e.target.closest('button')) {
@@ -799,9 +1208,8 @@ function showPodMetrics(namespace, podName) {
     modal.show();
 }
 
-// Показать детали метрик
+// Показать детали метрик (остается без изменений)
 function showDetailedMetrics(data) {
-    // Обновляем CPU детали
     const cpuDetails = document.getElementById('cpu-details');
     cpuDetails.innerHTML = `
         <p><strong>Total CPU Usage:</strong> ${data.total_cpu || 'N/A'}</p>
@@ -809,7 +1217,6 @@ function showDetailedMetrics(data) {
         <p><strong>Last Updated:</strong> ${data.timestamp ? new Date(data.timestamp).toLocaleString() : 'N/A'}</p>
     `;
     
-    // Обновляем Memory детали
     const memoryDetails = document.getElementById('memory-details');
     memoryDetails.innerHTML = `
         <p><strong>Total Memory Usage:</strong> ${data.total_memory || 'N/A'}</p>
@@ -817,10 +1224,8 @@ function showDetailedMetrics(data) {
         <p><strong>Last Updated:</strong> ${data.timestamp ? new Date(data.timestamp).toLocaleString() : 'N/A'}</p>
     `;
     
-    // Создаем подробные графики
     createDetailedCharts(data);
     
-    // Обновляем таблицу контейнеров
     const containerTable = document.getElementById('container-metrics-table').querySelector('tbody');
     containerTable.innerHTML = '';
     
@@ -840,18 +1245,15 @@ function showDetailedMetrics(data) {
     }
 }
 
-// Создание подробных графиков
+// Создание подробных графиков (остается без изменений)
 function createDetailedCharts(data) {
     const cpuCtx = document.getElementById('detailedCpuChart').getContext('2d');
     const memoryCtx = document.getElementById('detailedMemoryChart').getContext('2d');
     
-    // Уничтожаем старые графики если есть
     if (detailedCpuChart) detailedCpuChart.destroy();
     if (detailedMemoryChart) detailedMemoryChart.destroy();
     
-    // Проверяем есть ли данные о контейнерах
     if (!data.containers || !Array.isArray(data.containers) || data.containers.length === 0) {
-        // Создаем заглушки если нет данных
         detailedCpuChart = new Chart(cpuCtx, {
             type: 'bar',
             data: {
@@ -916,10 +1318,8 @@ function createDetailedCharts(data) {
         return;
     }
     
-    // Подготавливаем данные для графиков
     const containerNames = data.containers.map(c => c.name);
     
-    // CPU данные - парсим строку типа "123m"
     const cpuData = data.containers.map(c => {
         if (c.cpu_usage && c.cpu_usage.includes('m')) {
             const value = parseFloat(c.cpu_usage.replace('m', ''));
@@ -928,10 +1328,8 @@ function createDetailedCharts(data) {
         return 0;
     });
     
-    // Memory данные - парсим строку с единицами измерения
     const memoryData = data.containers.map(c => {
         if (c.memory_usage) {
-            // Парсим строку вида "12.34Mi" или "12345Ki" или "12345678"
             const match = c.memory_usage.match(/(\d+(?:\.\d+)?)\s*(Ki|Mi|Gi|Ti|B)?/i);
             if (match) {
                 let value = parseFloat(match[1]);
@@ -940,22 +1338,20 @@ function createDetailedCharts(data) {
                 if (isNaN(value)) return 0;
                 
                 switch(unit.toLowerCase()) {
-                    case 'ki': return value / 1024; // KiB to MiB
-                    case 'mi': return value; // MiB
-                    case 'gi': return value * 1024; // GiB to MiB
-                    case 'ti': return value * 1024 * 1024; // TiB to MiB
-                    default: return value / (1024 * 1024); // Bytes to MiB
+                    case 'ki': return value / 1024;
+                    case 'mi': return value;
+                    case 'gi': return value * 1024;
+                    case 'ti': return value * 1024 * 1024;
+                    default: return value / (1024 * 1024);
                 }
             }
         }
         return 0;
     });
     
-    // Проценты использования (защита от undefined)
     const cpuPercentData = data.containers.map(c => c.cpu_percent || 0);
     const memoryPercentData = data.containers.map(c => c.memory_percent || 0);
     
-    // Определяем цвета для графиков процентов
     const cpuPercentColors = cpuPercentData.map(p => 
         p > 80 ? '#dc3545' : p > 50 ? '#ffc107' : '#17a2b8'
     );
@@ -964,7 +1360,6 @@ function createDetailedCharts(data) {
         p > 80 ? '#dc3545' : p > 50 ? '#ffc107' : '#17a2b8'
     );
     
-    // Создаем график CPU
     detailedCpuChart = new Chart(cpuCtx, {
         type: 'bar',
         data: {
@@ -1060,7 +1455,6 @@ function createDetailedCharts(data) {
         }
     });
     
-    // Создаем график Memory
     detailedMemoryChart = new Chart(memoryCtx, {
         type: 'bar',
         data: {
@@ -1157,51 +1551,6 @@ function createDetailedCharts(data) {
     });
 }
 
-// Показать логи пода
-async function showLogs(namespace, podName) {
-    currentPod = { namespace, name: podName };
-    
-    document.getElementById('logs-pod-name').textContent = podName;
-    const modal = new bootstrap.Modal(document.getElementById('logsModal'));
-    modal.show();
-    
-    await loadLogs();
-}
-
-// Загрузить логи
-async function loadLogs() {
-    const lines = document.getElementById('log-lines').value;
-    const podName = currentPod.name;
-    const namespace = currentPod.namespace;
-    
-    try {
-        const response = await fetch(`/api/logs/${namespace}/${podName}?tail=${lines}`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const data = await response.json();
-        document.getElementById('logs-content').textContent = data.logs;
-        document.getElementById('logs-info').textContent = 
-            `Showing last ${lines} lines from pod ${podName}`;
-        
-        // Автопрокрутка вниз
-        const logsContainer = document.getElementById('logs-content');
-        logsContainer.scrollTop = logsContainer.scrollHeight;
-        
-    } catch (error) {
-        document.getElementById('logs-content').textContent = 
-            `Error loading logs: ${error.message}`;
-    }
-}
-
-// Скачать логи
-function downloadLogs() {
-    const podName = currentPod.name;
-    const namespace = currentPod.namespace;
-    const lines = document.getElementById('log-lines').value;
-    
-    window.location.href = `/api/logs/download/${namespace}/${podName}?tail=${lines}`;
-}
-
 // Показать конфигурацию пода
 async function showConfig(namespace, podName) {
     currentPod = { namespace, name: podName };
@@ -1287,7 +1636,6 @@ async function saveYAML() {
         document.getElementById('yaml-editor').style.display = 'none';
         document.getElementById('save-yaml-btn').style.display = 'none';
         
-        // Перезагружаем список подов
         loadPods();
         
     } catch (error) {
@@ -1325,7 +1673,6 @@ async function loadPodDetails() {
 
 // Заполнить детали пода
 function populatePodDetails(data) {
-    // Основная информация
     document.getElementById('details-namespace').textContent = data.namespace;
     document.getElementById('details-status').innerHTML = 
         `<span class="badge-status ${getStatusClass(data.status.phase)}">${data.status.phase}</span>`;
@@ -1337,7 +1684,6 @@ function populatePodDetails(data) {
     document.getElementById('details-start-time').textContent = 
         data.startTime ? new Date(data.startTime).toLocaleString() : '-';
     
-    // Лейблы
     const labelsContainer = document.getElementById('details-labels');
     labelsContainer.innerHTML = '';
     if (data.metadata.labels) {
@@ -1349,7 +1695,6 @@ function populatePodDetails(data) {
         });
     }
     
-    // Контейнеры
     const containersList = document.getElementById('containers-list');
     containersList.innerHTML = '';
     if (data.containers && Array.isArray(data.containers)) {
@@ -1369,7 +1714,6 @@ function populatePodDetails(data) {
         });
     }
     
-    // Условия
     const conditionsTable = document.getElementById('conditions-table').querySelector('tbody');
     conditionsTable.innerHTML = '';
     if (data.conditions && Array.isArray(data.conditions)) {
@@ -1408,7 +1752,8 @@ async function deletePod(namespace, podName) {
     }
 }
 
-// Вспомогательные функции
+// ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+
 function getStatusClass(status) {
     switch(status) {
         case 'Running': return 'badge-running';
@@ -1539,6 +1884,13 @@ function exportToCSV() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+// Экранирование HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // Дополнительные функции

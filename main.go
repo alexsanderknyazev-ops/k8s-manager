@@ -2,62 +2,62 @@ package main
 
 import (
 	"log"
-	//"os"
+	//"net/http"
+	"os"
 
 	"k8s-manager/api"
-	"k8s-manager/internal/config"
-	"k8s-manager/internal/k8s"
+	// "k8s-manager/internal/config"
 
 	"github.com/gin-gonic/gin"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
+	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 func main() {
-	// Инициализация конфигурации
-	cfg := config.Load()
+	// Настройка клиента Kubernetes
+	kubeconfig := os.Getenv("KUBECONFIG")
+	if kubeconfig == "" {
+		kubeconfig = os.Getenv("HOME") + "/.kube/config"
+	}
 
-	// Инициализация Gin
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		log.Fatalf("Failed to build kubeconfig: %v", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Fatalf("Failed to create Kubernetes client: %v", err)
+	}
+
+	metricsClient, err := metricsv.NewForConfig(config)
+	if err != nil {
+		log.Printf("Warning: Failed to create metrics client: %v", err)
+		metricsClient = nil
+	}
+
+	// Настройка Gin
+	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
-	// Загружаем HTML шаблоны
-	r.LoadHTMLGlob("templates/*.html")
+	// Загрузка HTML шаблонов
+	r.LoadHTMLGlob("templates/*")
+
+	// Статические файлы
 	r.Static("/static", "./static")
 
-	// Middleware
-	r.Use(CORSMiddleware())
+	// Favicon
+	r.StaticFile("/favicon.ico", "./static/favicon.ico")
+	r.StaticFile("/apple-touch-icon.png", "./static/apple-touch-icon.png")
+	r.StaticFile("/apple-touch-icon-precomposed.png", "./static/apple-touch-icon-precomposed.png")
 
-	// Инициализация Kubernetes клиента
-	k8sClient, metricsClient := k8s.InitK8s()
-	if k8sClient == nil {
-		log.Fatal("❌ Failed to initialize Kubernetes client")
-	}
-
-	// Настройка маршрутов
-	api.SetupRoutes(r, k8sClient, metricsClient)
+	// Настройка роутов
+	api.SetupRoutes(r, clientset, metricsClient)
 
 	// Запуск сервера
-	port := cfg.Port
-	log.Printf("🚀 K8s Manager started on :%s", port)
-	log.Printf("📊 Dashboard: http://localhost:%s/ui/dashboard", port)
-	log.Printf("🚀 Applications: http://localhost:%s/ui/applications", port)
-	log.Printf("🔧 Pods: http://localhost:%s/ui/pods", port)
-	log.Printf("⚙️  Deployments: http://localhost:%s/ui/deployments", port)
-	log.Printf("🛠️  Configuration: http://localhost:%s/ui/config", port)
-	log.Printf("📚 API: http://localhost:%s/api", port)
-
-	if err := r.Run(":" + port); err != nil {
-		log.Fatal("❌ Failed to start server:", err)
-	}
-}
-
-func CORSMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-		c.Next()
+	log.Println("Starting K8s Manager on http://localhost:8080")
+	if err := r.Run(":8080"); err != nil {
+		log.Fatal(err)
 	}
 }

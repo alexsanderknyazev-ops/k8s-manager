@@ -178,6 +178,30 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Активные Log Stream сессии -->
+                <div class="card mt-3" id="logstream-sessions-card" style="display: none;">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="fas fa-stream me-2"></i>Active Log Streams</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0" id="logstream-sessions-table">
+                                <thead>
+                                    <tr>
+                                        <th>Pod</th>
+                                        <th>Follow</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="logstream-sessions-body">
+                                    <!-- Log streams will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Основная область с подами -->
@@ -195,6 +219,9 @@
                         </button>
                         <button class="btn btn-outline-success" onclick="loadPortForwardSessions()">
                             <i class="fas fa-exchange-alt me-1"></i>Port-forward
+                        </button>
+                        <button class="btn btn-outline-warning" onclick="loadLogStreamSessions()">
+                            <i class="fas fa-stream me-1"></i>Log Streams
                         </button>
                         <div class="dropdown">
                             <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
@@ -332,6 +359,9 @@
                                 <button class="btn btn-sm btn-outline-success" onclick="loadPortForwardSessions()">
                                     <i class="fas fa-exchange-alt me-1"></i>Port-forward
                                 </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="loadLogStreamSessions()">
+                                    <i class="fas fa-stream me-1"></i>Log Streams
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -433,6 +463,109 @@
         </div>
     </div>
 
+    <!-- Единое модальное окно для логов (реалтайм + статические) -->
+    <div class="modal fade" id="logsModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-file-alt me-2"></i>
+                        Pod Logs: <span id="logs-pod-name"></span>
+                    </h5>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-info" onclick="startRealtimeLogs()" id="start-realtime-btn">
+                            <i class="fas fa-play me-1"></i>Start Live
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="stopRealtimeLogs()" id="stop-realtime-btn" style="display: none;">
+                            <i class="fas fa-stop me-1"></i>Stop
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning" onclick="clearLogs()">
+                            <i class="fas fa-trash me-1"></i>Clear
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="downloadLogs()">
+                            <i class="fas fa-download me-1"></i>Save
+                        </button>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <div class="input-group">
+                                <span class="input-group-text">Tail Lines</span>
+                                <input type="number" id="log-tail" class="form-control" value="100" min="10" max="10000">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="log-follow" checked>
+                                <label class="form-check-label" for="log-follow">Follow (live streaming)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="input-group">
+                                <span class="input-group-text">Buffer</span>
+                                <input type="number" id="log-buffer" class="form-control" value="1000" min="100" max="10000">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Фильтр логов -->
+                    <div class="mb-3">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-filter"></i></span>
+                            <input type="text" id="log-filter" class="form-control" placeholder="Filter logs...">
+                            <button class="btn btn-outline-secondary" onclick="clearLogFilter()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                            <div class="btn-group">
+                                <button class="btn btn-outline-info" onclick="filterLogs('info')">
+                                    <i class="fas fa-info-circle"></i> Info
+                                </button>
+                                <button class="btn btn-outline-warning" onclick="filterLogs('warning')">
+                                    <i class="fas fa-exclamation-triangle"></i> Warn
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="filterLogs('error')">
+                                    <i class="fas fa-exclamation-circle"></i> Error
+                                </button>
+                                <button class="btn btn-outline-success" onclick="filterLogs('success')">
+                                    <i class="fas fa-check-circle"></i> Success
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="filterLogs('log')">
+                                    <i class="fas fa-file-alt"></i> Logs
+                                </button>
+                                <button class="btn btn-outline-primary" onclick="filterLogs('all')">
+                                    <i class="fas fa-list"></i> All
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Статус -->
+                    <div class="alert alert-info" id="logs-status">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Ready to view logs
+                    </div>
+                    
+                    <!-- Контейнер для логов -->
+                    <div class="logs-container">
+                        <div class="logs-controls">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="autoscroll" checked>
+                                <label class="form-check-label" for="autoscroll">Auto-scroll</label>
+                            </div>
+                            <small class="text-muted" id="log-count">0 logs</small>
+                        </div>
+                        <pre id="logs-content" class="logs-pre"></pre>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick="stopRealtimeLogs()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Модальное окно для деталей метрик -->
     <div class="modal fade" id="metricsModal" tabindex="-1">
         <div class="modal-dialog modal-xl">
@@ -500,42 +633,6 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Модальное окно для логов -->
-    <div class="modal fade" id="logsModal" tabindex="-1">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="fas fa-file-alt me-2"></i>
-                        Logs: <span id="logs-pod-name"></span>
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <div class="input-group">
-                            <span class="input-group-text">Lines</span>
-                            <input type="number" id="log-lines" class="form-control" value="100" min="10" max="10000">
-                            <button class="btn btn-primary" onclick="loadLogs()">
-                                <i class="fas fa-sync me-1"></i>Reload
-                            </button>
-                            <button class="btn btn-success" onclick="downloadLogs()">
-                                <i class="fas fa-download me-1"></i>Download
-                            </button>
-                        </div>
-                    </div>
-                    <div class="logs-container">
-                        <pre id="logs-content" class="logs-pre"></pre>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <small class="text-muted me-auto" id="logs-info"></small>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>

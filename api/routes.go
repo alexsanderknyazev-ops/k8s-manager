@@ -105,5 +105,11 @@ func SetupRoutes(r *gin.Engine, clientset *kubernetes.Clientset, metricsClient *
 		api.GET("/metrics/pod/:namespace/:pod", handler.GetSinglePodMetricsHandler)
 		api.GET("/metrics/all-pods", handler.GetAllPodsMetricsHandler)
 		api.GET("/metrics/nodes", handler.GetNodeMetricsHandler)
+
+		// Real-time logs API
+api.GET("/logs/stream/:namespace/:pod", handler.StartLogStreamHandler)
+api.GET("/logs/streams", handler.GetLogStreamsHandler)
+api.DELETE("/logs/stream/:id", handler.StopLogStreamHandler)
+api.GET("/watch/pods", handler.WatchPodsHandler)
 	}
 }

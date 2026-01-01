@@ -1,11 +1,10 @@
 package handlers
 
 import (
+	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"log"
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -20,7 +19,7 @@ import (
 var (
 	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
-			return true // Для разработки, в production нужно настроить правильно
+			return true // Для разработки
 		},
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
@@ -150,14 +149,13 @@ func (h *Handler) StartLogStreamHandler(c *gin.Context) {
 
 // streamPodLogs - Чтение и отправка логов через WebSocket
 func (h *Handler) streamPodLogs(stream *LogStream, clientset *kubernetes.Clientset) error {
-	// Создаем отдельный контекст для логов
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Отслеживаем закрытие WebSocket
 	go func() {
 		<-stream.StopChan
-		cancel() // Отменяем контекст при остановке
+		cancel()
 	}()
 
 	// Получаем информацию о поде
@@ -171,17 +169,6 @@ func (h *Handler) streamPodLogs(stream *LogStream, clientset *kubernetes.Clients
 		return err
 	}
 
-	// Проверяем, что под запущен
-	if pod.Status.Phase != corev1.PodRunning {
-		stream.Conn.WriteJSON(LogMessage{
-			Type:    "warning",
-			Message: fmt.Sprintf("Pod is not running (status: %s)", pod.Status.Phase),
-			Time:    time.Now().Format(time.RFC3339),
-		})
-
-		// Если не running, все равно пытаемся получить логи
-	}
-
 	// Отправляем информацию о поде
 	stream.Conn.WriteJSON(LogMessage{
 		Type: "info",
@@ -190,29 +177,73 @@ func (h *Handler) streamPodLogs(stream *LogStream, clientset *kubernetes.Clients
 		Time: time.Now().Format(time.RFC3339),
 	})
 
-	// Получаем текущие логи
-	req := clientset.CoreV1().Pods(stream.Namespace).GetLogs(stream.Pod, &corev1.PodLogOptions{
-		TailLines: &stream.TailLines,
-		Follow:    stream.Follow,
-	})
+	// Если в поде несколько контейнеров, нужно указать конкретный контейнер
+	// или получить логи из первого контейнера
+	containerName := ""
+	if len(pod.Spec.Containers) > 0 {
+		containerName = pod.Spec.Containers[0].Name
+	}
+
+	// Получаем логи с правильными параметрами
+	podLogOpts := &corev1.PodLogOptions{
+		Container:  containerName,
+		TailLines:  &stream.TailLines,
+		Follow:     stream.Follow,
+		Timestamps: true, // Добавляем временные метки
+	}
+
+	log.Printf("Requesting logs for pod %s/%s, container: %s, follow: %v, tail: %d",
+		stream.Namespace, stream.Pod, containerName, stream.Follow, stream.TailLines)
+
+	req := clientset.CoreV1().Pods(stream.Namespace).GetLogs(stream.Pod, podLogOpts)
 
 	podLogs, err := req.Stream(ctx)
 	if err != nil {
-		stream.Conn.WriteJSON(LogMessage{
-			Type:    "error",
-			Message: fmt.Sprintf("Failed to get log stream: %v", err),
-			Time:    time.Now().Format(time.RFC3339),
-		})
-		return err
+		errorMsg := fmt.Sprintf("Failed to get log stream: %v", err)
+		log.Printf(errorMsg)
+
+		// Попробуем получить логи без указания контейнера
+		if containerName != "" {
+			log.Printf("Trying without container name...")
+			podLogOpts.Container = ""
+			req = clientset.CoreV1().Pods(stream.Namespace).GetLogs(stream.Pod, podLogOpts)
+			podLogs, err = req.Stream(ctx)
+
+			if err != nil {
+				stream.Conn.WriteJSON(LogMessage{
+					Type:    "error",
+					Message: errorMsg,
+					Time:    time.Now().Format(time.RFC3339),
+				})
+				return err
+			}
+		} else {
+			stream.Conn.WriteJSON(LogMessage{
+				Type:    "error",
+				Message: errorMsg,
+				Time:    time.Now().Format(time.RFC3339),
+			})
+			return err
+		}
 	}
 	defer podLogs.Close()
 
-	// Буфер для чтения
-	buf := make([]byte, 2048) // Уменьшим буфер
-	messageBuffer := ""
-	lastActivity := time.Now()
+	// Сообщаем об успешном подключении
+	stream.Conn.WriteJSON(LogMessage{
+		Type:    "info",
+		Message: "Successfully connected to pod logs",
+		Time:    time.Now().Format(time.RFC3339),
+	})
 
-	for {
+	// Используем Scanner для построчного чтения
+	scanner := bufio.NewScanner(podLogs)
+
+	// Увеличиваем максимальный размер буфера (логи могут быть длинными)
+	const maxCapacity = 1024 * 1024 // 1MB
+	buf := make([]byte, maxCapacity)
+	scanner.Buffer(buf, maxCapacity)
+
+	for scanner.Scan() {
 		select {
 		case <-stream.StopChan:
 			stream.Conn.WriteJSON(LogMessage{
@@ -223,116 +254,62 @@ func (h *Handler) streamPodLogs(stream *LogStream, clientset *kubernetes.Clients
 			return nil
 
 		case <-ctx.Done():
-			stream.Conn.WriteJSON(LogMessage{
-				Type:    "info",
-				Message: "Log stream context cancelled",
-				Time:    time.Now().Format(time.RFC3339),
-			})
 			return nil
 
 		default:
-			// Устанавливаем таймаут на чтение
-			podLogs.(interface{ SetReadDeadline(time.Time) error }).SetReadDeadline(time.Now().Add(5 * time.Second))
+			line := scanner.Text()
 
-			n, err := podLogs.Read(buf)
+			// Отправляем строку лога
+			err := stream.Conn.WriteJSON(LogMessage{
+				Type:    "log",
+				Message: line,
+				Time:    time.Now().Format(time.RFC3339),
+			})
 
 			if err != nil {
-				// Проверяем на таймаут
-				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-					// Таймаут - это нормально, продолжаем
-					if time.Since(lastActivity) > 30*time.Second && stream.Follow {
-						// Отправляем keep-alive сообщение каждые 30 секунд
-						stream.Conn.WriteJSON(LogMessage{
-							Type:    "info",
-							Message: "Listening for new log entries...",
-							Time:    time.Now().Format(time.RFC3339),
-						})
-						lastActivity = time.Now()
-					}
-
-					// Проверяем WebSocket соединение
-					if err := stream.Conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(10*time.Second)); err != nil {
-						return fmt.Errorf("WebSocket connection lost: %v", err)
-					}
-
-					time.Sleep(100 * time.Millisecond)
-					continue
-				}
-
-				if err == io.EOF {
-					if stream.Follow {
-						// Если follow и EOF, под возможно перезапустился
-						stream.Conn.WriteJSON(LogMessage{
-							Type:    "warning",
-							Message: "Pod logs ended (pod might have restarted)",
-							Time:    time.Now().Format(time.RFC3339),
-						})
-						// Пытаемся переподключиться
-						time.Sleep(2 * time.Second)
-						continue
-					}
-					// Если не follow, просто завершаем
-					stream.Conn.WriteJSON(LogMessage{
-						Type:    "info",
-						Message: "Log stream completed",
-						Time:    time.Now().Format(time.RFC3339),
-					})
-					return nil
-				}
-
-				stream.Conn.WriteJSON(LogMessage{
-					Type:    "error",
-					Message: fmt.Sprintf("Error reading logs: %v", err),
-					Time:    time.Now().Format(time.RFC3339),
-				})
+				log.Printf("WebSocket write error: %v", err)
 				return err
 			}
-
-			if n > 0 {
-				lastActivity = time.Now()
-				data := string(buf[:n])
-
-				// Обрабатываем построчно
-				for _, char := range data {
-					messageBuffer += string(char)
-					if char == '\n' {
-						// Отправляем полную строку
-						err := stream.Conn.WriteJSON(LogMessage{
-							Type:    "log",
-							Message: messageBuffer,
-							Time:    time.Now().Format(time.RFC3339),
-						})
-
-						if err != nil {
-							log.Printf("WebSocket write error: %v", err)
-							return err
-						}
-
-						messageBuffer = ""
-					}
-				}
-
-				// Отправляем оставшиеся данные если они есть и мы не в follow режиме
-				if messageBuffer != "" && !stream.Follow {
-					err := stream.Conn.WriteJSON(LogMessage{
-						Type:    "log",
-						Message: messageBuffer,
-						Time:    time.Now().Format(time.RFC3339),
-					})
-
-					if err != nil {
-						log.Printf("WebSocket write error: %v", err)
-						return err
-					}
-
-					messageBuffer = ""
-				}
-			}
-
-			// Небольшая задержка для CPU
-			time.Sleep(50 * time.Millisecond)
 		}
 	}
+
+	// Проверяем ошибку сканера
+	if err := scanner.Err(); err != nil {
+		if err == context.Canceled {
+			return nil
+		}
+
+		log.Printf("Scanner error: %v", err)
+		stream.Conn.WriteJSON(LogMessage{
+			Type:    "error",
+			Message: fmt.Sprintf("Error reading logs: %v", err),
+			Time:    time.Now().Format(time.RFC3339),
+		})
+		return err
+	}
+
+	// Если мы здесь, значит сканер закончил (EOF)
+	if stream.Follow {
+		// В режиме follow это может означать, что под перезапустился
+		stream.Conn.WriteJSON(LogMessage{
+			Type:    "warning",
+			Message: "Pod logs ended (pod might have restarted). Trying to reconnect...",
+			Time:    time.Now().Format(time.RFC3339),
+		})
+
+		// Ждем и пытаемся переподключиться
+		time.Sleep(2 * time.Second)
+		return h.streamPodLogs(stream, clientset) // Рекурсивная переподключка
+	}
+
+	// Если не follow, просто завершаем
+	stream.Conn.WriteJSON(LogMessage{
+		Type:    "info",
+		Message: "Log stream completed",
+		Time:    time.Now().Format(time.RFC3339),
+	})
+
+	return nil
 }
 
 // StopLogStreamHandler - Остановка лог-стрима
