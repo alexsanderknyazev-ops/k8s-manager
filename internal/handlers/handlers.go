@@ -4,7 +4,10 @@ import (
 	"net/http"
 	"time"
 
+	"fmt"
+
 	"github.com/gin-gonic/gin"
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
@@ -105,13 +108,51 @@ func (h *Handler) GetApplicationsHandler(c *gin.Context) {
 		return
 	}
 
-	// В реальной реализации здесь должна быть логика получения приложений
-	// Пока возвращаем заглушку
+	// Получаем деплойменты
+	var deployments *appsv1.DeploymentList
+	var err error
+
+	if namespace == "all" {
+		deployments, err = h.clientset.AppsV1().Deployments("").List(c.Request.Context(), metav1.ListOptions{})
+	} else {
+		deployments, err = h.clientset.AppsV1().Deployments(namespace).List(c.Request.Context(), metav1.ListOptions{})
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var applications []gin.H
+	for _, dep := range deployments.Items {
+		readyReplicas := int32(0)
+		if dep.Status.ReadyReplicas > 0 {
+			readyReplicas = dep.Status.ReadyReplicas
+		}
+
+		totalReplicas := int32(1)
+		if dep.Spec.Replicas != nil {
+			totalReplicas = *dep.Spec.Replicas
+		}
+
+		applications = append(applications, gin.H{
+			"name":        dep.Name,
+			"namespace":   dep.Namespace,
+			"type":        "Deployment",
+			"instances":   totalReplicas,
+			"ready":       fmt.Sprintf("%d/%d", readyReplicas, totalReplicas),
+			"ready_count": readyReplicas,
+			"total_count": totalReplicas,
+			"age":         time.Since(dep.CreationTimestamp.Time).Round(time.Second).String(),
+			"labels":      dep.Labels,
+			"strategy":    string(dep.Spec.Strategy.Type),
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"namespace":    namespace,
-		"count":        0,
-		"applications": []gin.H{},
-		"message":      "Applications endpoint - implementation pending",
+		"count":        len(applications),
+		"applications": applications,
 	})
 }
 
@@ -179,81 +220,5 @@ func (h *Handler) GetNodesHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"count": len(nodes.Items),
 		"nodes": result,
-	})
-}
-
-// GetPodMetricsHandler - Обработчик для получения метрик подов
-func (h *Handler) GetPodMetricsHandler(c *gin.Context) {
-	namespace := c.Param("namespace")
-
-	if h.clientset == nil || h.metricsClient == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "K8s or Metrics client not ready"})
-		return
-	}
-
-	// Реализация будет в отдельном файле
-	c.JSON(http.StatusOK, gin.H{
-		"namespace": namespace,
-		"metrics":   []gin.H{},
-		"message":   "Pod metrics endpoint - implementation pending",
-	})
-}
-
-// GetSinglePodMetricsHandler - Обработчик для получения метрик конкретного пода
-func (h *Handler) GetSinglePodMetricsHandler(c *gin.Context) {
-	namespace := c.Param("namespace")
-	podName := c.Param("pod")
-
-	c.JSON(http.StatusOK, gin.H{
-		"pod":       podName,
-		"namespace": namespace,
-		"message":   "Single pod metrics endpoint - implementation pending",
-	})
-}
-
-// GetAllPodsMetricsHandler - Обработчик для получения метрик всех подов
-func (h *Handler) GetAllPodsMetricsHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"message": "All pods metrics endpoint - implementation pending",
-	})
-}
-
-// GetNodeMetricsHandler - Обработчик для получения метрик нод
-func (h *Handler) GetNodeMetricsHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Node metrics endpoint - implementation pending",
-	})
-}
-
-// GetPortForwardSessionsHandler - Обработчик для получения активных сессий port-forward
-func (h *Handler) GetPortForwardSessionsHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Port-forward sessions endpoint - implementation pending",
-	})
-}
-
-// StartPortForwardHandler - Обработчик для запуска port-forward
-func (h *Handler) StartPortForwardHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Start port-forward endpoint - implementation pending",
-	})
-}
-
-// StopPortForwardHandler - Обработчик для остановки port-forward
-func (h *Handler) StopPortForwardHandler(c *gin.Context) {
-	sessionID := c.Param("id")
-	c.JSON(http.StatusOK, gin.H{
-		"session": sessionID,
-		"message": "Stop port-forward endpoint - implementation pending",
-	})
-}
-
-// CheckPortAvailableHandler - Обработчик для проверки доступности порта
-func (h *Handler) CheckPortAvailableHandler(c *gin.Context) {
-	portStr := c.Param("port")
-	c.JSON(http.StatusOK, gin.H{
-		"port":      portStr,
-		"available": false,
-		"message":   "Check port available endpoint - implementation pending",
 	})
 }
