@@ -31,11 +31,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Инициализация графика ресурсов
 function initResourceChart() {
-    const ctx = document.getElementById('resourceChart').getContext('2d');
+    const canvas = document.getElementById('resourceChart');
+    const ctx = canvas.getContext('2d');
     
     if (resourceChart) {
         resourceChart.destroy();
     }
+    
+    // Устанавливаем размер canvas
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
     
     resourceChart = new Chart(ctx, {
         type: 'doughnut',
@@ -51,7 +56,8 @@ function initResourceChart() {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false,
+            maintainAspectRatio: true,
+            aspectRatio: 1, // Квадратное соотношение для круговой диаграммы
             plugins: {
                 legend: {
                     position: 'bottom',
@@ -80,6 +86,14 @@ function initResourceChart() {
             animation: {
                 animateScale: true,
                 animateRotate: true
+            },
+            layout: {
+                padding: {
+                    top: 10,
+                    bottom: 10,
+                    left: 10,
+                    right: 10
+                }
             }
         }
     });
@@ -942,11 +956,12 @@ function updateCharts() {
     if (metrics.length === 0) return;
     
     metrics.sort((a, b) => (b.cpu_raw || 0) - (a.cpu_raw || 0));
-    
     const topPods = metrics.slice(0, 8);
     
     // Обновляем график CPU
-    const cpuCtx = document.getElementById('cpuChart').getContext('2d');
+    const cpuCanvas = document.getElementById('cpuChart');
+    const cpuCtx = cpuCanvas.getContext('2d');
+    
     if (cpuChart) cpuChart.destroy();
     
     cpuChart = new Chart(cpuCtx, {
@@ -963,9 +978,16 @@ function updateCharts() {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false,
+            maintainAspectRatio: true,
+            aspectRatio: 3, // Улучшенное соотношение
             plugins: {
-                legend: { display: false }
+                legend: { 
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        boxWidth: 12
+                    }
+                }
             },
             scales: {
                 y: {
@@ -973,14 +995,36 @@ function updateCharts() {
                     title: {
                         display: true,
                         text: 'mCPU'
+                    },
+                    grid: {
+                        drawBorder: true
                     }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45
+                    }
+                }
+            },
+            layout: {
+                padding: {
+                    left: 5,
+                    right: 5,
+                    top: 10,
+                    bottom: 5
                 }
             }
         }
     });
     
     // Обновляем график Memory
-    const memoryCtx = document.getElementById('memoryChart').getContext('2d');
+    const memoryCanvas = document.getElementById('memoryChart');
+    const memoryCtx = memoryCanvas.getContext('2d');
+    
     if (memoryChart) memoryChart.destroy();
     
     memoryChart = new Chart(memoryCtx, {
@@ -988,7 +1032,7 @@ function updateCharts() {
         data: {
             labels: topPods.map(m => m.pod.substring(0, 20)),
             datasets: [{
-                label: 'Memory Usage',
+                label: 'Memory Usage (MB)',
                 data: topPods.map(m => (m.memory_raw || 0) / (1024 * 1024)),
                 backgroundColor: '#28a745',
                 borderColor: '#1e7e34',
@@ -997,9 +1041,16 @@ function updateCharts() {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false,
+            maintainAspectRatio: true,
+            aspectRatio: 3,
             plugins: {
-                legend: { display: false }
+                legend: { 
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        boxWidth: 12
+                    }
+                }
             },
             scales: {
                 y: {
@@ -1007,13 +1058,32 @@ function updateCharts() {
                     title: {
                         display: true,
                         text: 'MB'
+                    },
+                    grid: {
+                        drawBorder: true
                     }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45
+                    }
+                }
+            },
+            layout: {
+                padding: {
+                    left: 5,
+                    right: 5,
+                    top: 10,
+                    bottom: 5
                 }
             }
         }
     });
 }
-
 // Рендер таблицы подов
 function renderPodsTable(pods) {
     const tbody = document.getElementById('pods-table-body');
@@ -1247,13 +1317,20 @@ function showDetailedMetrics(data) {
 
 // Создание подробных графиков (остается без изменений)
 function createDetailedCharts(data) {
-    const cpuCtx = document.getElementById('detailedCpuChart').getContext('2d');
-    const memoryCtx = document.getElementById('detailedMemoryChart').getContext('2d');
+    // Получаем контексты Canvas
+    const cpuCanvas = document.getElementById('detailedCpuChart');
+    const memoryCanvas = document.getElementById('detailedMemoryChart');
     
+    const cpuCtx = cpuCanvas.getContext('2d');
+    const memoryCtx = memoryCanvas.getContext('2d');
+    
+    // Уничтожаем старые графики если они есть
     if (detailedCpuChart) detailedCpuChart.destroy();
     if (detailedMemoryChart) detailedMemoryChart.destroy();
     
+    // Подготовка данных
     if (!data.containers || !Array.isArray(data.containers) || data.containers.length === 0) {
+        // График для отсутствия данных
         detailedCpuChart = new Chart(cpuCtx, {
             type: 'bar',
             data: {
@@ -1261,16 +1338,25 @@ function createDetailedCharts(data) {
                 datasets: [{
                     label: 'CPU Usage',
                     data: [0],
-                    backgroundColor: '#007bff'
+                    backgroundColor: '#007bff',
+                    borderColor: '#0056b3',
+                    borderWidth: 1
                 }]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
+                maintainAspectRatio: true,
+                aspectRatio: 2, // Устанавливаем соотношение сторон
                 plugins: {
+                    legend: {
+                        display: true
+                    },
                     title: {
                         display: true,
-                        text: 'CPU Usage per Container'
+                        text: 'CPU Usage per Container',
+                        font: {
+                            size: 14
+                        }
                     }
                 },
                 scales: {
@@ -1280,6 +1366,19 @@ function createDetailedCharts(data) {
                             display: true,
                             text: 'mCPU'
                         }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                },
+                layout: {
+                    padding: {
+                        left: 10,
+                        right: 10,
+                        top: 10,
+                        bottom: 10
                     }
                 }
             }
@@ -1292,16 +1391,25 @@ function createDetailedCharts(data) {
                 datasets: [{
                     label: 'Memory Usage',
                     data: [0],
-                    backgroundColor: '#28a745'
+                    backgroundColor: '#28a745',
+                    borderColor: '#1e7e34',
+                    borderWidth: 1
                 }]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
+                maintainAspectRatio: true,
+                aspectRatio: 2,
                 plugins: {
+                    legend: {
+                        display: true
+                    },
                     title: {
                         display: true,
-                        text: 'Memory Usage per Container'
+                        text: 'Memory Usage per Container',
+                        font: {
+                            size: 14
+                        }
                     }
                 },
                 scales: {
@@ -1311,6 +1419,19 @@ function createDetailedCharts(data) {
                             display: true,
                             text: 'MB'
                         }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                },
+                layout: {
+                    padding: {
+                        left: 10,
+                        right: 10,
+                        top: 10,
+                        bottom: 10
                     }
                 }
             }
@@ -1352,14 +1473,7 @@ function createDetailedCharts(data) {
     const cpuPercentData = data.containers.map(c => c.cpu_percent || 0);
     const memoryPercentData = data.containers.map(c => c.memory_percent || 0);
     
-    const cpuPercentColors = cpuPercentData.map(p => 
-        p > 80 ? '#dc3545' : p > 50 ? '#ffc107' : '#17a2b8'
-    );
-    
-    const memoryPercentColors = memoryPercentData.map(p => 
-        p > 80 ? '#dc3545' : p > 50 ? '#ffc107' : '#17a2b8'
-    );
-    
+    // Создаем график CPU
     detailedCpuChart = new Chart(cpuCtx, {
         type: 'bar',
         data: {
@@ -1382,7 +1496,7 @@ function createDetailedCharts(data) {
                     borderWidth: 2,
                     fill: true,
                     tension: 0.4,
-                    pointBackgroundColor: cpuPercentColors,
+                    pointBackgroundColor: '#ff6b6b',
                     pointBorderColor: '#fff',
                     pointBorderWidth: 1,
                     pointRadius: 4,
@@ -1393,8 +1507,16 @@ function createDetailedCharts(data) {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false,
+            maintainAspectRatio: true,
+            aspectRatio: 2,
             plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 10
+                    }
+                },
                 title: {
                     display: true,
                     text: 'CPU Usage per Container',
@@ -1425,6 +1547,10 @@ function createDetailedCharts(data) {
                 x: {
                     grid: {
                         display: false
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45
                     }
                 },
                 y: {
@@ -1433,7 +1559,10 @@ function createDetailedCharts(data) {
                         display: true,
                         text: 'mCPU'
                     },
-                    position: 'left'
+                    position: 'left',
+                    grid: {
+                        drawBorder: true
+                    }
                 },
                 y1: {
                     beginAtZero: true,
@@ -1444,17 +1573,27 @@ function createDetailedCharts(data) {
                     },
                     position: 'right',
                     grid: {
-                        drawOnChartArea: false
+                        drawOnChartArea: false,
+                        drawBorder: true
                     }
                 }
             },
             interaction: {
                 intersect: false,
                 mode: 'index'
+            },
+            layout: {
+                padding: {
+                    left: 10,
+                    right: 10,
+                    top: 10,
+                    bottom: 10
+                }
             }
         }
     });
     
+    // Создаем график Memory
     detailedMemoryChart = new Chart(memoryCtx, {
         type: 'bar',
         data: {
@@ -1477,7 +1616,7 @@ function createDetailedCharts(data) {
                     borderWidth: 2,
                     fill: true,
                     tension: 0.4,
-                    pointBackgroundColor: memoryPercentColors,
+                    pointBackgroundColor: '#4ecdc4',
                     pointBorderColor: '#fff',
                     pointBorderWidth: 1,
                     pointRadius: 4,
@@ -1488,8 +1627,16 @@ function createDetailedCharts(data) {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false,
+            maintainAspectRatio: true,
+            aspectRatio: 2,
             plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 10
+                    }
+                },
                 title: {
                     display: true,
                     text: 'Memory Usage per Container',
@@ -1520,6 +1667,10 @@ function createDetailedCharts(data) {
                 x: {
                     grid: {
                         display: false
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45
                     }
                 },
                 y: {
@@ -1528,7 +1679,10 @@ function createDetailedCharts(data) {
                         display: true,
                         text: 'Memory (MB)'
                     },
-                    position: 'left'
+                    position: 'left',
+                    grid: {
+                        drawBorder: true
+                    }
                 },
                 y1: {
                     beginAtZero: true,
@@ -1539,13 +1693,22 @@ function createDetailedCharts(data) {
                     },
                     position: 'right',
                     grid: {
-                        drawOnChartArea: false
+                        drawOnChartArea: false,
+                        drawBorder: true
                     }
                 }
             },
             interaction: {
                 intersect: false,
                 mode: 'index'
+            },
+            layout: {
+                padding: {
+                    left: 10,
+                    right: 10,
+                    top: 10,
+                    bottom: 10
+                }
             }
         }
     });
@@ -1928,7 +2091,29 @@ async function testConnection() {
         showToast('Connection test failed: ' + error.message, 'error');
     }
 }
+// Добавьте эту функцию в конце файла pods.js
+function resizeChartsOnModalOpen() {
+    // Ресайз графиков при открытии модального окна метрик
+    $('#metricsModal').on('shown.bs.modal', function () {
+        if (detailedCpuChart) {
+            detailedCpuChart.resize();
+        }
+        if (detailedMemoryChart) {
+            detailedMemoryChart.resize();
+        }
+    });
+    
+    // Ресайз графиков при открытии модального окна с основными графиками
+    $('#logsModal').on('shown.bs.modal', function () {
+        // Можете добавить ресайз других графиков если нужно
+    });
+}
 
+// Вызовите эту функцию в DOMContentLoaded
+document.addEventListener('DOMContentLoaded', function() {
+    // ... существующий код ...
+    resizeChartsOnModalOpen();
+});
 // Автообновление каждые 30 секунд
 setInterval(() => {
     if (document.visibilityState === 'visible') {

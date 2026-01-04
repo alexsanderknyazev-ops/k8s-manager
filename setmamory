@@ -1,0 +1,19 @@
+kubectl edit statefulset kafka-service -n market
+
+# Или через patch
+kubectl patch statefulset kafka-service -n market --type='json' -p='[
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/resources",
+    "value": {
+      "requests": {
+        "memory": "1Gi",
+        "cpu": "500m"
+      },
+      "limits": {
+        "memory": "2Gi", 
+        "cpu": "2"
+      }
+    }
+  }
+]'
