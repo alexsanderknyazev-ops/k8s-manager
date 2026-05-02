@@ -1,0 +1,13 @@
+.git
+.github
+*.md
+.env
+*.test
+*.test.go
+cmd
+deploy
+vendor/golang.org/x/net/http2/h2demo
+vendor/github.com/onsi
+vendor/k8s.io/*/testdata
+*.sum
+.DS_Store

@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: k8s-manager
+  namespace: k8s-manager
+  labels:
+    app: k8s-manager
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: k8s-manager

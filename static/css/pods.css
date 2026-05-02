@@ -1,0 +1,1189 @@
+:root {
+    --color-running: #64748b;
+    --color-pending: #94a3b8;
+    --color-failed: #94a3b8;
+    --color-succeeded: #64748b;
+    --color-default: #94a3b8;
+    --color-portforward: #475569;
+}
+
+/* --- Выравнивание и панель кнопок на странице Pods --- */
+/* Шапка: заголовок и тулбар в одну линию, выравнивание по центру по вертикали */
+.pods-header-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.pods-page-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #212529;
+    margin: 0;
+    line-height: 1.3;
+    display: flex;
+    align-items: center;
+}
+
+.pods-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
+.btn-pods-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    background: #fff;
+    color: #495057;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.btn-pods-action:hover {
+    background: #f1f3f5;
+    border-color: #adb5bd;
+    color: #212529;
+}
+
+.btn-pods-action i {
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+.btn-pods-primary {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+}
+
+.btn-pods-primary:hover {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+    color: #fff;
+}
+
+.btn-pods-more {
+    padding: 0.5rem 0.65rem;
+}
+
+.btn-pods-more span {
+    display: none;
+}
+
+.pods-toolbar-dropdown .dropdown-menu {
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    border: 1px solid #e9ecef;
+}
+
+.pods-toolbar-dropdown .dropdown-item {
+    font-size: 0.875rem;
+    padding: 0.5rem 1rem;
+}
+
+/* Футер карточки таблицы подов — выравнивание по вертикали */
+.card-footer .d-flex {
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.card-footer .btn-group {
+    align-items: center;
+}
+
+.card-footer .btn-group .btn {
+    display: inline-flex;
+    align-items: center;
+}
+
+@media (max-width: 768px) {
+    .btn-pods-action span {
+        display: none;
+    }
+    .btn-pods-action {
+        padding: 0.5rem 0.65rem;
+    }
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-page, #f8fafc);
+}
+
+.navbar-brand {
+    font-weight: 700;
+    font-size: 1.5rem;
+}
+
+.sidebar-card {
+    box-shadow: 0 2px 4px rgba(0,0,0,.1);
+    border: none;
+    border-radius: 10px;
+}
+
+.sidebar-card .card-header h6 {
+    display: flex;
+    align-items: center;
+    margin: 0;
+}
+
+.sidebar-card .form-label {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.35rem;
+}
+
+.sidebar-card .form-check {
+    display: flex;
+    align-items: center;
+}
+
+.sidebar-card .form-check-label {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0;
+}
+
+.sidebar-card .d-grid {
+    align-items: stretch;
+}
+
+.sidebar-card .d-grid .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebar-card .chart-wrapper {
+    min-height: 180px;
+    height: 180px;
+}
+
+.stat-card {
+    border: none;
+    border-radius: 10px;
+    transition: transform 0.2s;
+    cursor: pointer;
+    height: 100%;
+}
+
+.stat-card .card-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 72px;
+    padding: 0.75rem 1rem;
+}
+
+.stat-card .card-body h5 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    line-height: 1.4;
+}
+
+.stat-card .card-body small {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.8rem;
+}
+
+/* Карточка Total Resources — два блока в одну линию, выровнены */
+.stat-card .card-body .d-flex.justify-content-between {
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.stat-card .card-body .d-flex.justify-content-between > div {
+    flex: 1;
+    min-width: 0;
+}
+
+.stat-card .card-body .d-flex.justify-content-between > div h5 {
+    justify-content: flex-start;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+
+/* Ряд карточек статистики — одинаковая высота */
+.row.mb-4 .col-md-3 {
+    display: flex;
+}
+
+.row.mb-4 .col-md-3 .card {
+    flex: 1;
+    width: 100%;
+}
+
+.status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-dot.running { background-color: var(--color-running); }
+.status-dot.pending { background-color: var(--color-pending); }
+.status-dot.failed { background-color: var(--color-failed); }
+.status-dot.succeeded { background-color: var(--color-succeeded); }
+
+/* ——— Обёртка и контейнер таблицы подов ——— */
+.pods-table-card-body {
+    overflow: hidden;
+    min-height: 0;
+}
+
+.pods-table-responsive {
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+}
+
+.pods-table {
+    width: 100%;
+    min-width: 1100px;
+    table-layout: fixed;
+}
+
+/* Колонки: фиксированные доли для ровной сетки; Name — фиксированная ширина, чтобы не ломать перенос */
+.pods-table .pods-col-name   { width: 200px; min-width: 200px; }
+.pods-table .pods-col-ns    { width: 10%; min-width: 90px; }
+.pods-table .pods-col-status { width: 8%; min-width: 80px; }
+.pods-table .pods-col-ready { width: 6%; min-width: 60px; }
+.pods-table .pods-col-restarts { width: 6%; min-width: 56px; }
+.pods-table .pods-col-cpu-pct  { width: 7%; min-width: 56px; }
+.pods-table .pods-col-mem-pct  { width: 8%; min-width: 64px; }
+.pods-table .pods-col-cpu-usage { width: 12%; min-width: 100px; }
+.pods-table .pods-col-mem-usage { width: 12%; min-width: 100px; }
+.pods-table .pods-col-actions { width: 60px; min-width: 60px; }
+
+/* Заголовки таблицы подов */
+#pods-table.pods-table thead th {
+    font-weight: 600;
+    white-space: nowrap;
+    vertical-align: middle;
+    padding: 0.75rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+#pods-table.pods-table thead th.pods-col-name,
+#pods-table.pods-table td:nth-child(1) { text-align: left; }
+#pods-table.pods-table thead th.pods-col-ns,
+#pods-table.pods-table td:nth-child(2) { text-align: left; }
+#pods-table.pods-table thead th.pods-col-status,
+#pods-table.pods-table td:nth-child(3) { text-align: center; }
+#pods-table.pods-table thead th.pods-col-ready,
+#pods-table.pods-table td:nth-child(4) { text-align: center; }
+#pods-table.pods-table thead th.pods-col-restarts,
+#pods-table.pods-table td:nth-child(5) { text-align: right; }
+#pods-table.pods-table thead th.pods-col-cpu-pct,
+#pods-table.pods-table td:nth-child(6) { text-align: right; }
+#pods-table.pods-table thead th.pods-col-mem-pct,
+#pods-table.pods-table td:nth-child(7) { text-align: right; }
+#pods-table.pods-table thead th.pods-col-cpu-usage,
+#pods-table.pods-table td:nth-child(8) { text-align: right; }
+#pods-table.pods-table thead th.pods-col-mem-usage,
+#pods-table.pods-table td:nth-child(9) { text-align: right; }
+#pods-table.pods-table thead th.pods-col-actions,
+#pods-table.pods-table td:nth-child(10) { text-align: center; }
+
+#pods-table.pods-table td {
+    vertical-align: middle;
+    padding: 0.5rem;
+}
+
+/* Ячейка Name: одна линия, без переноса по буквам (перебиваем .table td) */
+#pods-table td.pods-td-name,
+.pods-table td.pods-td-name {
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    overflow: hidden;
+    min-width: 200px;
+    width: 200px;
+    text-align: left;
+}
+
+#pods-table .pods-name-cell,
+.pods-table .pods-name-cell {
+    display: flex !important;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* Имя пода — одна строка, фиксированная ширина контейнера, обрезка с ellipsis */
+#pods-table .pods-name-text,
+.pods-table .pods-name-text {
+    display: inline-block !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    width: 160px;
+    max-width: 160px;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+#pods-table .pods-name-icon,
+.pods-table .pods-name-icon {
+    flex-shrink: 0;
+    margin-right: 0.35rem;
+}
+
+#pods-table .pods-name-ip,
+.pods-table .pods-name-ip {
+    flex-shrink: 0;
+    white-space: nowrap !important;
+    font-size: 0.7rem;
+}
+
+/* Actions: одна кнопка Delete */
+.pods-td-actions {
+    white-space: nowrap;
+    text-align: center;
+}
+.pods-td-actions .btn-action {
+    margin: 0;
+}
+
+/* Карточка пода: панель действий в шапке модалки (всегда видна) */
+.pod-detail-modal-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+.pod-detail-modal-header .modal-title {
+    margin-right: auto;
+}
+.pod-detail-actions-in-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0;
+    border: none;
+}
+.pod-detail-actions-in-header .btn {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
+}
+.pod-detail-modal-header .btn-close {
+    margin-left: 0;
+}
+
+/* Вкладки в модалке пода */
+.detail-logs-container {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+.detail-console-wrap {
+    height: 70vh;
+    min-height: 400px;
+}
+.detail-console-iframe {
+    width: 100%;
+    height: 100%;
+    border: 1px solid var(--border, #dee2e6);
+    border-radius: 6px;
+}
+
+/* CPU / Memory usage: компактный блок, прогресс не растягивает ячейку */
+#pods-table.pods-table td:nth-child(8) .d-flex,
+#pods-table.pods-table td:nth-child(9) .d-flex {
+    flex-wrap: nowrap;
+    min-width: 0;
+    gap: 0.35rem;
+}
+
+#pods-table.pods-table td:nth-child(8) .d-flex > span:first-child,
+#pods-table.pods-table td:nth-child(9) .d-flex > span:first-child {
+    flex-shrink: 0;
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+}
+
+#pods-table.pods-table td:nth-child(8) .progress,
+#pods-table.pods-table td:nth-child(9) .progress {
+    flex: 1;
+    min-width: 40px;
+    max-width: 80px;
+}
+
+/* Стили для строк таблицы */
+.table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Badge статусов */
+.badge-status {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-running { background-color: #d4edda; color: #155724; }
+.badge-pending { background-color: #fff3cd; color: #856404; }
+.badge-failed { background-color: #f8d7da; color: #721c24; }
+.badge-succeeded { background-color: #d1ecf1; color: #0c5460; }
+
+/* Кнопки действий */
+.btn-action {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 2px;
+}
+
+.btn-action-sm {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8rem;
+}
+
+/* Кнопка Port-forward в таблице */
+.btn-action.btn-outline-success {
+    border-color: var(--color-portforward);
+    color: var(--color-portforward);
+}
+
+.btn-action.btn-outline-success:hover {
+    background-color: var(--color-portforward);
+    color: white;
+}
+
+/* Стили для таблицы port-forward сессий */
+#portforward-sessions-table {
+    font-size: 0.75rem;
+}
+
+#portforward-sessions-table td {
+    padding: 4px 8px;
+    vertical-align: middle;
+}
+
+#portforward-sessions-table th {
+    padding: 6px 8px;
+    background-color: #f8f9fa;
+    font-weight: 600;
+}
+
+.badge-sm {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+}
+
+/* Модальное окно Port-forward */
+#portForwardModal .btn-group .btn {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
+}
+
+#portForwardModal .alert-info {
+    font-size: 0.9rem;
+    padding: 0.75rem;
+}
+
+#forwarded-url {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.9rem;
+}
+
+/* Контейнер для логов */
+.logs-container {
+    background-color: #1e1e1e;
+    border-radius: 5px;
+    padding: 15px;
+    max-height: 500px;
+    overflow-y: auto;
+    position: relative;
+}
+
+.logs-pre {
+    color: #d4d4d4;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.9rem;
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    min-height: 300px;
+}
+
+.logs-controls {
+    position: sticky;
+    top: 0;
+    background: var(--bg-card, #2d2d2d);
+    padding: 8px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    z-index: 10;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 1px 0 0 var(--border, rgba(0,0,0,0.1));
+}
+
+/* Цвета для разных типов логов */
+.log-info {
+    color: #4ec9b0;
+}
+
+.log-warning {
+    color: #ffc107;
+    background-color: rgba(255, 193, 7, 0.1);
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.log-error {
+    color: #f48771;
+    background-color: rgba(244, 135, 113, 0.1);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: bold;
+}
+
+.log-success {
+    color: #28a745;
+    background-color: rgba(40, 167, 69, 0.1);
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.log-system {
+    color: #569cd6;
+}
+
+.log-timestamp {
+    color: #808080;
+    font-size: 0.8rem;
+}
+
+.log-pod {
+    color: #ce9178;
+    font-weight: bold;
+}
+
+/* Анимация для новых логов */
+@keyframes highlightNewLog {
+    0% { background-color: rgba(255, 255, 255, 0.1); }
+    100% { background-color: transparent; }
+}
+
+.new-log {
+    animation: highlightNewLog 1s ease-out;
+}
+
+/* Стили для фильтрации */
+.filter-active {
+    background-color: #2d8a3e !important;
+    color: white !important;
+}
+
+/* Статус логов */
+#logs-status {
+    font-size: 0.9rem;
+    padding: 10px;
+    border-left: 4px solid #2d8a3e;
+}
+
+#logs-status.connecting {
+    border-left-color: #ffc107;
+}
+
+#logs-status.connected {
+    border-left-color: #28a745;
+}
+
+#logs-status.error {
+    border-left-color: #dc3545;
+}
+
+/* Кнопки управления логами */
+#start-realtime-btn.active {
+    background-color: #28a745;
+    color: white;
+}
+
+#stop-realtime-btn.active {
+    background-color: #dc3545;
+    color: white;
+}
+
+/* Стили для таблицы лог стримов */
+#logstream-sessions-table {
+    font-size: 0.75rem;
+}
+
+#logstream-sessions-table td {
+    padding: 4px 8px;
+    vertical-align: middle;
+}
+
+#logstream-sessions-table th {
+    padding: 6px 8px;
+    background-color: #f8f9fa;
+    font-weight: 600;
+}
+
+/* Анимация для живого стрима */
+@keyframes pulse-stream {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.fa-stream.text-success {
+    animation: pulse-stream 2s infinite;
+}
+
+/* Стили для модального окна логов */
+#logsModal .modal-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+#logsModal .modal-body {
+    padding: 20px;
+}
+
+/* Панель управления логами */
+.log-controls-panel {
+    background-color: #f8f9fa;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 15px;
+    border: 1px solid #dee2e6;
+}
+
+/* Счетчик логов */
+#log-count {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+/* Адаптивность для модального окна логов */
+@media (max-width: 768px) {
+    .logs-container {
+        max-height: 400px;
+    }
+    
+    .log-controls-panel {
+        flex-wrap: wrap;
+    }
+    
+    #logsModal .btn-group {
+        margin-top: 10px;
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* Скроллбар для контейнера логов */
+.logs-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.logs-container::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+.logs-container::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.logs-container::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}
+
+/* Индикатор онлайн/офлайн */
+.status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+
+.status-online {
+    background-color: #28a745;
+    animation: pulse 2s infinite;
+}
+
+.status-offline {
+    background-color: #dc3545;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* YAML просмотрщик */
+.yaml-pre {
+    background-color: #f5f5f5;
+    padding: 15px;
+    border-radius: 5px;
+    border-left: 4px solid #2d8a3e;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.85rem;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.yaml-editor {
+    width: 100%;
+    min-height: 400px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    padding: 15px;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    font-size: 0.85rem;
+}
+
+/* Контейнер для лейблов */
+.labels-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.label-badge {
+    background-color: #e9ecef;
+    color: #495057;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* Спиннер (родитель должен иметь position: relative) */
+.spinner-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255,255,255,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    isolation: isolate;
+}
+.theme-dark .spinner-overlay {
+    background: rgba(30,30,30,0.9);
+}
+
+/* Анимации */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+/* Подсветка для поиска */
+.highlight {
+    background-color: #fff3cd;
+    padding: 1px 3px;
+    border-radius: 3px;
+}
+
+/* Прогресс бар */
+.progress-thin {
+    height: 6px;
+}
+
+.progress-thin .progress-bar {
+    border-radius: 3px;
+}
+
+/* Графики - общие настройки */
+.chart-container {
+    position: relative;
+    width: 100%;
+}
+
+.chart-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 200px; /* Минимальная высота */
+}
+
+/* График ресурсов */
+#resourceChart {
+    max-height: 150px;
+    width: 100% !important;
+}
+
+#detailedCpuChart, #detailedMemoryChart {
+    max-width: 100% !important;
+    max-height: 300px !important;
+}
+
+/* Общие стили для всех графиков */
+canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Уведомления */
+.toast-alert {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    border-radius: 0.375rem;
+}
+
+/* Панель метрик и карточки графиков */
+#metrics-charts {
+    gap: 1rem;
+}
+
+#metrics-charts .card {
+    height: 100%;
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+}
+
+#metrics-charts .card-header {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #212529;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+    padding: 0.75rem 1rem;
+}
+
+#metrics-charts .card-header i {
+    opacity: 0.85;
+    margin-right: 0.35rem;
+}
+
+#metrics-charts .card-body {
+    padding: 1rem 1.25rem;
+}
+
+#metrics-charts .chart-wrapper {
+    min-height: 220px;
+    height: 220px;
+}
+
+#cpuChart, #memoryChart {
+    max-height: 100%;
+    width: 100% !important;
+}
+
+/* Кнопки в таблице */
+.btn-group .btn-action {
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.btn-group .btn-action:hover {
+    opacity: 1;
+}
+
+/* Информация о ресурсах */
+#resource-info {
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+/* Прогресс бары в таблице */
+.table td .progress {
+    min-width: 60px;
+    background-color: #e9ecef;
+}
+
+.table td .progress-bar {
+    transition: width 0.3s ease;
+}
+
+/* ——— Detailed Metrics modal ——— */
+.metrics-modal-body .metrics-panel {
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+.metrics-modal-body .metrics-panel-header {
+    background: var(--bs-body-bg, #fff);
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+}
+.metrics-panel-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.metrics-summary-block {
+    min-height: 3.5rem;
+}
+.metrics-summary {
+    padding: 0.25rem 0;
+}
+.metrics-summary-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    color: var(--bs-body-color, #212529);
+    line-height: 1.2;
+}
+.metrics-summary-meta {
+    font-size: 0.8rem;
+    color: var(--bs-secondary-color, #6c757d);
+    margin-top: 0.25rem;
+}
+.metrics-summary-sep {
+    margin: 0 0.35rem;
+    opacity: 0.7;
+}
+.metrics-chart-wrapper {
+    height: 240px;
+    position: relative;
+}
+#container-metrics-table thead th {
+    font-weight: 600;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+#container-metrics-table tbody td {
+    vertical-align: middle;
+}
+#container-metrics-table .font-monospace {
+    font-variant-numeric: tabular-nums;
+}
+.metrics-pct-cell {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    min-width: 100px;
+}
+.metrics-pct-bar {
+    width: 60px;
+    height: 6px;
+    min-width: 60px;
+    background-color: var(--bs-secondary-bg, #e9ecef);
+}
+.metrics-pct-badge {
+    min-width: 2.5rem;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+}
+
+/* Badge процентов в таблице */
+.table td .badge {
+    min-width: 50px;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+}
+
+/* Порядок колонок в таблице */
+#pods-table th:nth-child(6),
+#pods-table td:nth-child(6) {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+#pods-table th:nth-child(7),
+#pods-table td:nth-child(7) {
+    background-color: rgba(40, 167, 69, 0.05);
+}
+
+/* Для предотвращения растягивания */
+.card-body {
+    overflow: hidden;
+}
+
+/* Контейнер для графика в sidebar */
+.sidebar-card .card-body {
+    min-height: auto;
+}
+
+/* Обертка для графика ресурсов в sidebar */
+.sidebar-card .chart-wrapper {
+    height: 150px;
+    margin: 0 auto;
+}
+
+/* Улучшаем отображение легенды графика ресурсов */
+.sidebar-card .chartjs-legend {
+    margin-top: 10px;
+}
+
+/* Responsive fixes для графика */
+@media (max-width: 768px) {
+    .chart-wrapper {
+        min-height: 150px;
+    }
+    
+    .modal-body .chart-wrapper {
+        min-height: 250px;
+    }
+    
+    #metrics-charts .chart-wrapper {
+        min-height: 150px;
+    }
+}
+
+/* Фикс для таблицы в мобильных устройствах */
+@media (max-width: 768px) {
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    #pods-table {
+        min-width: 800px;
+    }
+}
+
+/* Улучшаем видимость процентов в таблице */
+.table td:nth-child(6) .badge,
+.table td:nth-child(7) .badge {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    font-weight: 600;
+}
+
+/* Подсветка строк при наведении */
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+/* Улучшаем прогресс-бары в таблице */
+.table td .progress {
+    background-color: rgba(0, 0, 0, 0.05);
+    border-radius: 3px;
+}
+
+.table td .progress-bar {
+    border-radius: 3px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+
+/* Фикс для модальных окон с графиками */
+.modal-body .chart-wrapper {
+    min-height: 300px;
+    height: 300px;
+}
+
+/* Улучшаем отображение tooltip в графиках */
+.chartjs-tooltip {
+    background-color: rgba(0, 0, 0, 0.8);
+    border-radius: 4px;
+    color: white;
+    padding: 8px;
+    font-size: 12px;
+}
+
+/* Анимация для активного port-forward иконки */
+@keyframes pulse-portforward {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.fa-exchange-alt.text-success {
+    animation: pulse-portforward 2s infinite;
+}
+
+/* Стили для карточки с активными port-forward сессиями */
+#portforward-sessions-card .card-header {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+}
+
+#portforward-sessions-card .card-body {
+    padding: 0;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* Стили для кнопки Stop в таблице сессий */
+#portforward-sessions-table .btn-outline-danger {
+    border-width: 1px;
+    padding: 0.1rem 0.3rem;
+}
+
+/* Иконка активного port-forward рядом с именем пода */
+.fa-exchange-alt.text-success {
+    font-size: 0.8rem;
+    animation: pulse-portforward 2s infinite;
+}
+
+/* Стили для модального окна Port-forward */
+#portForwardModal .modal-body {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* Quick порты кнопки */
+#portForwardModal .btn-group .btn {
+    transition: all 0.2s;
+}
+
+#portForwardModal .btn-group .btn:hover {
+    transform: translateY(-1px);
+}
+
+/* Результат port-forward */
+#portForwardResult .alert-success {
+    border-left: 4px solid var(--color-portforward);
+}
+
+#portForwardResult .input-group {
+    margin-top: 10px;
+}
+
+/* Индикатор загрузки */
+.spinner-border {
+    vertical-align: middle;
+}
+
+/* Анимация мигания для активных сессий */
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.badge.bg-success {
+    animation: blink 2s infinite;
+}

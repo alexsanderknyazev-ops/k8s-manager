@@ -1,0 +1,150 @@
+/* Дашборд — минимальный стиль, без перегруза */
+:root {
+    --success-muted: #64748b;
+    --warning-muted: #94a3b8;
+    --danger-muted: #94a3b8;
+    --info-muted: #64748b;
+}
+
+.page-header h1 {
+    color: var(--text);
+}
+
+.page-header h1 .text-primary {
+    color: var(--primary) !important;
+}
+
+.card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: none;
+    transition: none;
+}
+
+.card:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.status-card {
+    border-left: 3px solid var(--primary);
+}
+
+.status-card .card-body {
+    padding: 1rem 1.25rem;
+}
+
+.status-card .card-title.text-muted {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.status-card h3 {
+    color: var(--text);
+    font-size: 1.25rem;
+}
+
+.event-normal {
+    background-color: rgba(71, 85, 105, 0.04);
+}
+
+.event-warning {
+    background-color: rgba(148, 163, 184, 0.08);
+}
+
+.event-error {
+    background-color: rgba(148, 163, 184, 0.08);
+}
+
+.avatar-lg {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--border-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+.progress {
+    border-radius: 4px;
+    background: var(--border-light);
+    height: 5px;
+}
+
+.progress-bar {
+    border-radius: 4px;
+}
+
+.progress-bar.bg-success {
+    background-color: var(--success-muted) !important;
+}
+
+.btn {
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+.btn-outline-primary {
+    border-width: 1px;
+}
+
+.node-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.node-card:hover {
+    border-color: var(--primary);
+}
+
+.node-status.ready {
+    background-color: var(--success-muted);
+}
+
+.node-status.not-ready {
+    background-color: var(--danger-muted);
+}
+
+.namespace-badge:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.card {
+    animation: none;
+}
+
+/* Карточки и списки — избегаем наложения при переполнении */
+.card-body.p-0 .table-responsive,
+.card-body[style*="max-height"] {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.list-group-flush .list-group-item {
+    min-height: 2.5rem;
+}
+
+/* Иконки и фоны статусов только в карточках дашборда — приглушённые */
+.stat-card .text-success,
+.page-header .text-success { color: var(--success-muted) !important; }
+.stat-card .text-warning,
+.page-header .text-warning { color: var(--warning-muted) !important; }
+.stat-card .text-danger,
+.page-header .text-danger { color: var(--danger-muted) !important; }
+.stat-card .text-info,
+.page-header .text-info { color: var(--info-muted) !important; }
+
+.stat-card.bg-success.bg-opacity-10,
+.stat-card .bg-success.bg-opacity-10 { background-color: rgba(100, 116, 139, 0.1) !important; }
+.stat-card.bg-warning.bg-opacity-10,
+.stat-card .bg-warning.bg-opacity-10 { background-color: rgba(148, 163, 184, 0.1) !important; }
+.stat-card.bg-danger.bg-opacity-10,
+.stat-card .bg-danger.bg-opacity-10 { background-color: rgba(148, 163, 184, 0.08) !important; }
+.stat-card.bg-info.bg-opacity-10,
+.stat-card .bg-info.bg-opacity-10 { background-color: rgba(71, 85, 105, 0.08) !important; }
+
+.updating {
+    animation: none;
+}

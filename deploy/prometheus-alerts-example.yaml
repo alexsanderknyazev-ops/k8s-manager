@@ -1,0 +1,61 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: k8s-manager-alerts
+  namespace: monitoring
+spec:
+  groups:
+    - name: k8s-manager
+      rules:
+        - alert: K8sManagerDown
+          expr: up{job="k8s-manager"} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "K8s Manager is down"
+            description: "Prometheus target for k8s-manager is unavailable."
+
+        - alert: K8sManagerHighApi5xxRate
+          expr: |
+            (
+              sum(rate(http_requests_total{path=~"/api/.*",status=~"5.."}[5m])) /
+              clamp_min(sum(rate(http_requests_total{path=~"/api/.*"}[5m])), 1)
+            ) > 0.05
+          for: 3m
+          labels:
+            severity: warning
+          annotations:
+            summary: "K8s Manager API 5xx rate is high"
+            description: "More than 5% 5xx responses on /api/* during last 5m."
+
+        - alert: K8sManagerHighAuthFailureRate
+          expr: |
+            (
+              sum(rate(http_requests_total{path="/api/login",status="401"}[5m])) /
+              clamp_min(sum(rate(http_requests_total{path="/api/login"}[5m])), 1)
+            ) > 0.3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High authentication failure rate"
+            description: "More than 30% failed login attempts on /api/login."
+
+        - alert: K8sManagerRBACDenySpike
+          expr: rate(rbac_denied_total[5m]) > 0.2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "RBAC denies increased"
+            description: "Rate of RBAC denials is above threshold. Check recent permission changes."
+
+        - alert: K8sManagerHighServerErrorVolume
+          expr: sum(rate(http_requests_total{status=~"5.."}[5m])) > 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Sustained 5xx errors"
+            description: "Application is returning more than 1 server error per second."

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kubernetes Manager - Pod Terminal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/theme.css">
+    <link rel="stylesheet" href="/static/css/layout.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-layout">
+        {{template "sidebar" .}}
+        <div class="main-content-wrap">
+            <div class="app-content container-fluid">
+                <nav class="breadcrumb-wrap" aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="/ui/dashboard">Home</a></li>
+                        <li class="breadcrumb-item"><a href="/ui/pods">Pods</a></li>
+                        <li class="breadcrumb-item active">Terminal</li>
+                    </ol>
+                </nav>
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-terminal me-2"></i>Pod Exec: <span id="exec-pod-label">—</span></h5>
+                        <div>
+                            <a href="/ui/pods" class="btn btn-sm btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i>Back to Pods</a>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="exec-connect-form" class="p-3 border-bottom bg-light">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">Namespace</label>
+                                    <input type="text" id="exec-namespace" class="form-control form-control-sm" placeholder="default">
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">Pod</label>
+                                    <input type="text" id="exec-pod" class="form-control form-control-sm" placeholder="pod-name">
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">Container (optional)</label>
+                                    <input type="text" id="exec-container" class="form-control form-control-sm" placeholder="default">
+                                </div>
+                                <div class="col-auto">
+                                    <button type="button" id="exec-connect-btn" class="btn btn-primary btn-sm">
+                                        <i class="fas fa-plug me-1"></i>Connect
+                                    </button>
+                                    <button type="button" id="exec-disconnect-btn" class="btn btn-outline-danger btn-sm ms-1" style="display: none;">
+                                        <i class="fas fa-times me-1"></i>Disconnect
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="exec-status" class="small mt-2 text-muted"></div>
+                        </div>
+                        <div id="terminal-container" style="display: none; height: 70vh; padding: 8px; background: #1e1e1e;">
+                            <div id="terminal"></div>
+                        </div>
+                        <div id="exec-placeholder" class="p-5 text-center text-muted">
+                            <i class="fas fa-terminal fa-3x mb-3"></i>
+                            <p>Enter namespace and pod above, then click Connect to open a shell in the container.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="/static/js/exec.js"></script>
+</body>
+</html>

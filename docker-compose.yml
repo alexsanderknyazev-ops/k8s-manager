@@ -1,0 +1,41 @@
+# Запуск приложения с PostgreSQL: логин, пароль и роли хранятся в БД.
+# Первый пользователь (админ) создаётся при старте из FIRST_ADMIN_USER / FIRST_ADMIN_PASSWORD.
+#
+# Запуск: docker compose up -d
+# Логин: значение FIRST_ADMIN_USER, пароль: FIRST_ADMIN_PASSWORD (при первом старте).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: k8smanager
+      POSTGRES_PASSWORD: k8smanager_secret
+      POSTGRES_DB: k8smanager
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U k8smanager -d k8smanager"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      POSTGRES_DSN: "postgres://k8smanager:k8smanager_secret@postgres:5432/k8smanager?sslmode=disable"
+      FIRST_ADMIN_USER: admin
+      FIRST_ADMIN_PASSWORD: secret
+      # Kubeconfig: смонтируйте конфиг кластера, например:
+      # KUBECONFIG: /app/.kube/config
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Раскомментируйте для доступа к кластеру из контейнера:
+    # volumes:
+    #   - ~/.kube/config:/app/.kube/config:ro
+
+volumes:
+  postgres_data:

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kubernetes Manager - CronJobs</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/theme.css">
+    <link rel="stylesheet" href="/static/css/layout.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-layout">
+        {{template "sidebar" .}}
+        <div class="main-content-wrap">
+    <div class="app-content container-fluid">
+        <nav class="breadcrumb-wrap" aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/ui/dashboard">Home</a></li>
+                <li class="breadcrumb-item active">CronJobs</li>
+            </ol>
+        </nav>
+        <div class="mb-3">
+            <select id="cronjobs-namespace" class="form-select form-select-sm" style="width:auto; display:inline-block;">
+                <option value="default">default</option>
+                <option value="market">market</option>
+                <option value="kube-system">kube-system</option>
+                <option value="all">All</option>
+            </select>
+            <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="cronjobs-refresh"><i class="fas fa-sync-alt me-1"></i>Refresh</button>
+        </div>
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0"><i class="fas fa-clock me-2"></i>CronJobs</h5></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Namespace</th>
+                                <th>Schedule</th>
+                                <th>Last Run</th>
+                                <th>Active</th>
+                                <th>Suspend</th>
+                                <th>Age</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="cronjobs-tbody">
+                            <tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer text-muted small"><span id="cronjobs-count">0</span> cronjobs</div>
+        </div>
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0"><i class="fas fa-tasks me-2"></i>Jobs</h5></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Namespace</th>
+                                <th>Completions</th>
+                                <th>Succeeded</th>
+                                <th>Failed</th>
+                                <th>Completion Time</th>
+                                <th>Age</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jobs-tbody">
+                            <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer text-muted small"><span id="jobs-count">0</span> jobs</div>
+        </div>
+    </div>
+        </div>
+    </div>
+    <script src="/static/js/common.js"></script>
+    <script>
+(function () {
+    var nsSelect = document.getElementById('cronjobs-namespace');
+    function load() {
+        var ns = (nsSelect && nsSelect.value) || 'default';
+        if (ns === 'all') ns = 'default';
+        fetch('/api/cronjobs?namespace=' + encodeURIComponent(ns))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var list = data.cronjobs || [];
+                document.getElementById('cronjobs-count').textContent = data.count != null ? data.count : list.length;
+                var tbody = document.getElementById('cronjobs-tbody');
+                if (list.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No cronjobs</td></tr>';
+                } else {
+                    tbody.innerHTML = list.map(function (c) {
+                        var trigger = '<button type="button" class="btn btn-sm btn-outline-primary trigger-cron" data-ns="' + escapeHtml(c.namespace) + '" data-name="' + escapeHtml(c.name) + '">Trigger</button>';
+                        return '<tr><td>' + escapeHtml(c.name) + '</td><td>' + escapeHtml(c.namespace) + '</td><td>' + escapeHtml(c.schedule || '') + '</td><td>' + escapeHtml(c.lastSchedule || '') + '</td><td>' + (c.active || 0) + '</td><td>' + (c.suspend ? 'Yes' : 'No') + '</td><td>' + escapeHtml(c.age || '') + '</td><td>' + trigger + '</td></tr>';
+                    }).join('');
+                    tbody.querySelectorAll('.trigger-cron').forEach(function (btn) {
+                        btn.addEventListener('click', function () {
+                            var n = btn.getAttribute('data-ns');
+                            var name = btn.getAttribute('data-name');
+                            fetch('/api/cronjob/' + encodeURIComponent(n) + '/' + encodeURIComponent(name) + '/trigger', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+                                .then(function (r) { return r.json(); })
+                                .then(function (d) {
+                                    if (typeof showToast === 'function') showToast('Job created: ' + (d.job || ''), 'success');
+                                    load();
+                                })
+                                .catch(function (e) { if (typeof showToast === 'function') showToast(e.message || 'Trigger failed', 'error'); });
+                        });
+                    });
+                }
+            });
+        fetch('/api/jobs?namespace=' + encodeURIComponent(ns))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var list = data.jobs || [];
+                document.getElementById('jobs-count').textContent = data.count != null ? data.count : list.length;
+                var tbody = document.getElementById('jobs-tbody');
+                if (list.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No jobs</td></tr>';
+                } else {
+                    tbody.innerHTML = list.map(function (j) {
+                        return '<tr><td>' + escapeHtml(j.name) + '</td><td>' + escapeHtml(j.namespace) + '</td><td>' + (j.completions || 0) + '</td><td>' + (j.succeeded || 0) + '</td><td>' + (j.failed || 0) + '</td><td>' + escapeHtml(j.completionTime || '') + '</td><td>' + escapeHtml(j.age || '') + '</td></tr>';
+                    }).join('');
+                }
+            });
+    }
+    if (nsSelect) nsSelect.addEventListener('change', load);
+    document.getElementById('cronjobs-refresh').addEventListener('click', load);
+    loadNamespacesIntoSelect('cronjobs-namespace', false);
+    load();
+})();
+    </script>
+</body>
+</html>

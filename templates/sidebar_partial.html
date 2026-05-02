@@ -1,0 +1,77 @@
+{{define "sidebar"}}
+<aside class="app-sidebar">
+    <div class="sidebar-brand">
+        <a href="/ui/dashboard"><i class="fas fa-kubernetes me-2"></i><span>K8s Manager</span></a>
+    </div>
+    <nav class="sidebar-nav">
+        <a class="sidebar-link {{if eq .Title "Dashboard"}}active{{end}}" href="/ui/dashboard">
+            <i class="fas fa-tachometer-alt"></i><span>Dashboard</span>
+        </a>
+        <a class="sidebar-link {{if eq .Title "Applications"}}active{{end}}" href="/ui/applications">
+            <i class="fas fa-th-large"></i><span>Applications</span>
+        </a>
+        <a class="sidebar-link {{if eq .Title "Pods"}}active{{end}}" href="/ui/pods">
+            <i class="fas fa-cube"></i><span>Pods</span>
+        </a>
+        <a class="sidebar-link {{if eq .Title "Deployments"}}active{{end}}" href="/ui/deployments">
+            <i class="fas fa-layer-group"></i><span>Deployments</span>
+        </a>
+        <a class="sidebar-link {{if eq .Title "Деплой"}}active{{end}}" href="/ui/deploy">
+            <i class="fas fa-rocket"></i><span>Деплой</span>
+        </a>
+        <a class="sidebar-link {{if eq .Title "Configuration"}}active{{end}}" href="/ui/config">
+            <i class="fas fa-cogs"></i><span>Configuration</span>
+        </a>
+        <a class="sidebar-link {{if eq .Title "Events"}}active{{end}}" href="/ui/events">
+            <i class="fas fa-bell"></i><span>Events</span>
+        </a>
+        <a class="sidebar-link {{if eq .Title "CronJobs"}}active{{end}}" href="/ui/cronjobs">
+            <i class="fas fa-clock"></i><span>CronJobs</span>
+        </a>
+        <a class="sidebar-link {{if eq .Title "Audit"}}active{{end}}" href="/ui/audit">
+            <i class="fas fa-history"></i><span>Audit</span>
+        </a>
+        <a class="sidebar-link {{if eq .Title "HPA"}}active{{end}}" href="/ui/hpa">
+            <i class="fas fa-chart-line"></i><span>HPA</span>
+        </a>
+        <a class="sidebar-link {{if eq .Title "StatefulSets"}}active{{end}}" href="/ui/statefulsets">
+            <i class="fas fa-database"></i><span>StatefulSets</span>
+        </a>
+        <a class="sidebar-link {{if eq .Title "DaemonSets"}}active{{end}}" href="/ui/daemonsets">
+            <i class="fas fa-server"></i><span>DaemonSets</span>
+        </a>
+        <a class="sidebar-link {{if eq .Title "Users"}}active{{end}}" href="/ui/users">
+            <i class="fas fa-users"></i><span>Users</span>
+        </a>
+        <a class="sidebar-link {{if eq .Title "Permissions"}}active{{end}}" href="/ui/permissions">
+            <i class="fas fa-user-shield"></i><span>Permissions</span>
+        </a>
+    </nav>
+    <div class="sidebar-favorites py-2 px-3 border-top border-secondary" id="sidebar-favorites-wrap" style="display:none;">
+        <div class="small text-muted mb-1">Favorites</div>
+        <div id="sidebar-favorites-list"></div>
+        <button type="button" class="btn btn-sm btn-link p-0 mt-1 small" id="sidebar-fav-add"><i class="fas fa-plus me-1"></i>Add current</button>
+    </div>
+    <div class="sidebar-footer">
+        <button type="button" class="btn btn-sm btn-outline-secondary w-100 mb-2" id="theme-toggle" title="Toggle dark/light theme">
+            <i class="fas fa-moon" id="theme-icon"></i> <span id="theme-label">Dark</span>
+        </button>
+        <div class="mb-2 position-relative">
+            <input type="text" class="form-control form-control-sm" id="global-search" placeholder="Search..." autocomplete="off">
+            <div id="global-search-results" class="position-absolute start-0 end-0 border shadow-sm rounded mt-1 d-none global-search-dropdown" style="max-height:280px;overflow:auto;z-index:1000;"></div>
+        </div>
+        {{if .ReadOnly}}<span class="sidebar-badge readonly">Read-only</span>{{end}}
+        <span class="sidebar-badge connected"><i class="fas fa-plug"></i> Connected</span>
+        <div id="sidebar-context" class="small text-muted mt-1" title="Kubeconfig context"></div>
+        <select class="sidebar-ns-select form-select form-select-sm" id="namespace-selector" title="Namespace">
+            <option value="default" selected>default</option>
+            <option value="market">market</option>
+            <option value="kube-system">kube-system</option>
+            <option value="all">All</option>
+        </select>
+        <form action="/api/logout" method="post" class="sidebar-logout mt-2">
+            <button type="submit" class="btn btn-sm btn-outline-danger w-100"><i class="fas fa-sign-out-alt me-1"></i>Выйти</button>
+        </form>
+    </div>
+</aside>
+{{end}}

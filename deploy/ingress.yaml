@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: k8s-manager
+  namespace: k8s-manager
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Sticky session для сессий при replicas > 1
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "k8s_manager_route"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: k8s-manager.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: k8s-manager
+            port:
+              number: 8080
+  tls:
+  - hosts: [k8s-manager.local]
+    secretName: k8s-manager-tls

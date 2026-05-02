@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kubernetes Manager - Pods</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/theme.css">
+    <link rel="stylesheet" href="/static/css/layout.css">
+    <link rel="stylesheet" href="/static/css/pods.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-layout">
+        {{template "sidebar" .}}
+        <div class="main-content-wrap">
+    <div class="app-content container-fluid">
+        <nav class="breadcrumb-wrap" aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/ui/dashboard">Home</a></li>
+                <li class="breadcrumb-item active">Pods</li>
+            </ol>
+        </nav>
+        <div class="row">
+            <!-- Боковая панель фильтров -->
+            <div class="col-md-3 col-lg-2">
+                <div class="card sidebar-card">
+                    <div class="card-header">
+                        <h6><i class="fas fa-filter me-2"></i>Filters</h6>
+                    </div>
+                    <div class="card-body">
+                        <!-- Выбор namespace -->
+                        <div class="mb-3">
+                            <label class="form-label"><i class="fas fa-layer-group me-1"></i>Namespace</label>
+                            <select id="namespace-select" class="form-select">
+                                <option value="default">default</option>
+                                <option value="market">market</option>
+                                <option value="kube-system">kube-system</option>
+                                <option value="all">All Namespaces</option>
+                            </select>
+                            <small class="text-muted d-block mt-1">Чтобы видеть поды Kafka, Zookeeper и др. из всех namespace — выберите «All Namespaces».</small>
+                        </div>
+                        
+                        <!-- Фильтр по статусу -->
+                        <div class="mb-3">
+                            <label class="form-label"><i class="fas fa-circle me-1"></i>Status</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="Running" id="status-running" checked>
+                                <label class="form-check-label" for="status-running">
+                                    <span class="status-dot running"></span> Running
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="Pending" id="status-pending" checked>
+                                <label class="form-check-label" for="status-pending">
+                                    <span class="status-dot pending"></span> Pending
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="Failed" id="status-failed" checked>
+                                <label class="form-check-label" for="status-failed">
+                                    <span class="status-dot failed"></span> Failed
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="Succeeded" id="status-succeeded" checked>
+                                <label class="form-check-label" for="status-succeeded">
+                                    <span class="status-dot succeeded"></span> Succeeded
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Поиск -->
+                        <div class="mb-3">
+                            <label class="form-label"><i class="fas fa-search me-1"></i>Search</label>
+                            <input type="text" id="search-pods" class="form-control" placeholder="Search pods...">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="fas fa-tags me-1"></i>Labels</label>
+                            <input type="text" id="pods-label-filter" class="form-control" placeholder="app=api">
+                        </div>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="pods-live-refresh">
+                            <label class="form-check-label" for="pods-live-refresh">Auto-refresh (10s)</label>
+                        </div>
+                        <!-- Кнопки действий -->
+                        <div class="d-grid gap-2">
+                            <button id="refresh-btn" class="btn btn-outline-primary">
+                                <i class="fas fa-sync-alt me-2"></i>Refresh
+                            </button>
+                            <button class="btn btn-outline-info" onclick="loadMetrics()">
+                                <i class="fas fa-chart-line me-2"></i>Load Metrics
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Статистика -->
+                    <div class="card-footer">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            <span id="stats-count">0</span> pods total
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Активные Log Stream сессии -->
+                <div class="card mt-3" id="logstream-sessions-card" style="display: none;">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="fas fa-stream me-2"></i>Active Log Streams</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0" id="logstream-sessions-table">
+                                <thead>
+                                    <tr>
+                                        <th>Pod</th>
+                                        <th>Follow</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="logstream-sessions-body">
+                                    <!-- Log streams will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Основная область с подами -->
+            <div class="col-md-9 col-lg-10">
+                <div class="pods-header-row">
+                    <h2 class="pods-page-title">
+                        <i class="fas fa-cube me-2"></i>Kubernetes Pods
+                        <span class="badge bg-secondary ms-2" id="current-namespace">default</span>
+                    </h2>
+                    <div class="pods-toolbar">
+                        <button type="button" class="btn btn-pods-action btn-pods-primary" onclick="loadMetrics()" title="Load metrics">
+                            <i class="fas fa-chart-line"></i>
+                            <span>Metrics</span>
+                        </button>
+                        <button type="button" class="btn btn-pods-action" onclick="exportToCSV()" title="Export to CSV">
+                            <i class="fas fa-download"></i>
+                            <span>Export</span>
+                        </button>
+                        <button type="button" class="btn btn-pods-action" onclick="loadLogStreamSessions()" title="Log streams">
+                            <i class="fas fa-stream"></i>
+                            <span>Logs</span>
+                        </button>
+                        <div class="dropdown pods-toolbar-dropdown">
+                            <button type="button" class="btn btn-pods-action btn-pods-more" data-bs-toggle="dropdown" aria-expanded="false" title="More actions">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="#" onclick="deleteAllFailedPods()"><i class="fas fa-broom me-2"></i>Clean Failed Pods</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="restartAllPods()"><i class="fas fa-redo me-2"></i>Restart All Pods</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Статус бар с реальными метриками -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-success bg-opacity-10">
+                            <div class="card-body">
+                                <h5><i class="fas fa-play-circle text-success me-2"></i><span id="running-count">0</span></h5>
+                                <small class="text-muted">Running</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-warning bg-opacity-10">
+                            <div class="card-body">
+                                <h5><i class="fas fa-clock text-warning me-2"></i><span id="pending-count">0</span></h5>
+                                <small class="text-muted">Pending</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-danger bg-opacity-10">
+                            <div class="card-body">
+                                <h5><i class="fas fa-exclamation-circle text-danger me-2"></i><span id="failed-count">0</span></h5>
+                                <small class="text-muted">Failed</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-info bg-opacity-10">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h5><i class="fas fa-microchip text-info me-2"></i><span id="total-cpu">0</span></h5>
+                                        <small class="text-muted">Total CPU</small>
+                                    </div>
+                                    <div>
+                                        <h5><i class="fas fa-memory text-info me-2"></i><span id="total-memory">0</span></h5>
+                                        <small class="text-muted">Total Memory</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Таблица с подами и реальными метриками -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-list me-2"></i>Pod List with Metrics</h5>
+                            <div class="spinner-border spinner-border-sm text-primary" id="loading-spinner" style="display: none;"></div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0 pods-table-card-body">
+                        <div class="table-responsive pods-table-responsive">
+                            <table class="table table-hover mb-0 pods-table" id="pods-table">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th class="pods-col-name">Name</th>
+                                        <th class="pods-col-ns">Namespace</th>
+                                        <th class="pods-col-status">Status</th>
+                                        <th class="pods-col-ready">Ready</th>
+                                        <th class="pods-col-restarts">Restarts</th>
+                                        <th class="pods-col-cpu-pct">CPU %</th>
+                                        <th class="pods-col-mem-pct">Memory %</th>
+                                        <th class="pods-col-cpu-usage">CPU Usage</th>
+                                        <th class="pods-col-mem-usage">Memory Usage</th>
+                                        <th class="pods-col-actions">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pods-table-body">
+                                    <!-- Pods will be loaded here -->
+                                    <tr>
+                                        <td colspan="10" class="text-center py-5">
+                                            <div class="spinner-border text-primary" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="mt-2 text-muted">Loading pods and metrics...</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted" id="last-updated">Last updated: --</small>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-outline-primary" onclick="loadPods()">
+                                    <i class="fas fa-sync-alt me-1"></i>Refresh All
+                                </button>
+                                <button class="btn btn-sm btn-outline-info" onclick="loadMetrics()">
+                                    <i class="fas fa-chart-line me-1"></i>Refresh Metrics
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="loadLogStreamSessions()">
+                                    <i class="fas fa-stream me-1"></i>Log Streams
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+        </div>
+    </div>
+</div>
+<!-- Модалки вынесены из main-content-wrap в body, чтобы не перекрывались backdrop'ом -->
+    <!-- Модальное окно для Port-forwarding -->
+    <div class="modal fade" id="portForwardModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-exchange-alt me-2"></i>Port Forward
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="portForwardForm">
+                        <input type="hidden" id="pf-pod">
+                        <input type="hidden" id="pf-namespace">
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Pod</label>
+                            <input type="text" class="form-control" id="pf-pod-display" disabled>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Service Port (in Pod)</label>
+                                    <input type="number" class="form-control" id="pf-remote-port" 
+                                           placeholder="e.g., 80, 8080" min="1" max="65535" required>
+                                    <small class="text-muted">Port inside the container</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Local Port</label>
+                                    <input type="number" class="form-control" id="pf-local-port" 
+                                           placeholder="e.g., 8080" min="1024" max="65535">
+                                    <small class="text-muted">Optional. Leave empty for auto</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Common Ports</label>
+                            <div class="btn-group w-100" role="group">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" 
+                                        onclick="setPort(80)">80 (HTTP)</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" 
+                                        onclick="setPort(443)">443 (HTTPS)</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" 
+                                        onclick="setPort(8080)">8080</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" 
+                                        onclick="setPort(3000)">3000</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" 
+                                        onclick="setPort(5432)">5432 (PostgreSQL)</button>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Port forward will create a tunnel: <br>
+                            <code>localhost:{localPort} → pod:{remotePort}</code>
+                        </div>
+                    </form>
+                    
+                    <div id="portForwardResult" style="display: none;">
+                        <div class="alert alert-success">
+                            <h6><i class="fas fa-check-circle me-2"></i>Port Forward Active</h6>
+                            <p>Access your service at:</p>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="forwarded-url" readonly>
+                                <button class="btn btn-outline-secondary" onclick="copyForwardedURL()">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                                <a class="btn btn-primary" id="forwarded-link" target="_blank">
+                                    <i class="fas fa-external-link-alt"></i> Open
+                                </a>
+                            </div>
+                            <div class="mt-2">
+                                <button class="btn btn-sm btn-outline-danger" onclick="stopPortForward()">
+                                    <i class="fas fa-stop"></i> Stop Port Forward
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="startPortForward()">
+                        <i class="fas fa-play me-1"></i>Start Port Forward
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Единое модальное окно для логов (реалтайм + статические) -->
+    <div class="modal fade" id="logsModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-file-alt me-2"></i>
+                        Pod Logs: <span id="logs-pod-name"></span>
+                    </h5>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-info" onclick="startRealtimeLogs()" id="start-realtime-btn">
+                            <i class="fas fa-play me-1"></i>Start Live
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="stopRealtimeLogs()" id="stop-realtime-btn" style="display: none;">
+                            <i class="fas fa-stop me-1"></i>Stop
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning" onclick="clearLogs()">
+                            <i class="fas fa-trash me-1"></i>Clear
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="downloadLogs()">
+                            <i class="fas fa-download me-1"></i>Save
+                        </button>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <div class="input-group">
+                                <span class="input-group-text">Tail Lines</span>
+                                <input type="number" id="log-tail" class="form-control" value="100" min="10" max="10000">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="log-follow" checked>
+                                <label class="form-check-label" for="log-follow">Follow (live streaming)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="input-group">
+                                <span class="input-group-text">Buffer</span>
+                                <input type="number" id="log-buffer" class="form-control" value="1000" min="100" max="10000">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Фильтр логов -->
+                    <div class="mb-3">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-filter"></i></span>
+                            <input type="text" id="log-filter" class="form-control" placeholder="Filter logs...">
+                            <button class="btn btn-outline-secondary" onclick="clearLogFilter()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                            <div class="btn-group">
+                                <button class="btn btn-outline-info" onclick="filterLogs('info')">
+                                    <i class="fas fa-info-circle"></i> Info
+                                </button>
+                                <button class="btn btn-outline-warning" onclick="filterLogs('warning')">
+                                    <i class="fas fa-exclamation-triangle"></i> Warn
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="filterLogs('error')">
+                                    <i class="fas fa-exclamation-circle"></i> Error
+                                </button>
+                                <button class="btn btn-outline-success" onclick="filterLogs('success')">
+                                    <i class="fas fa-check-circle"></i> Success
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="filterLogs('log')">
+                                    <i class="fas fa-file-alt"></i> Logs
+                                </button>
+                                <button class="btn btn-outline-primary" onclick="filterLogs('all')">
+                                    <i class="fas fa-list"></i> All
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Статус -->
+                    <div class="alert alert-info" id="logs-status">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Ready to view logs
+                    </div>
+                    
+                    <!-- Контейнер для логов -->
+                    <div class="logs-container">
+                        <div class="logs-controls">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="autoscroll" checked>
+                                <label class="form-check-label" for="autoscroll">Auto-scroll</label>
+                            </div>
+                            <small class="text-muted" id="log-count">0 logs</small>
+                        </div>
+                        <pre id="logs-content" class="logs-pre"></pre>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick="stopRealtimeLogs()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для деталей метрик -->
+    <div class="modal fade" id="metricsModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Detailed Metrics: <span id="metrics-pod-name"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body metrics-modal-body">
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card h-100 metrics-panel">
+                                <div class="card-header metrics-panel-header d-flex align-items-center">
+                                    <span class="metrics-panel-icon bg-primary bg-opacity-25 rounded-2 p-2 me-2"><i class="fas fa-microchip text-primary"></i></span>
+                                    <h6 class="mb-0">CPU</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="cpu-details" class="metrics-summary-block mb-3"></div>
+                                    <div class="chart-wrapper metrics-chart-wrapper">
+                                        <canvas id="detailedCpuChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card h-100 metrics-panel">
+                                <div class="card-header metrics-panel-header d-flex align-items-center">
+                                    <span class="metrics-panel-icon bg-success bg-opacity-25 rounded-2 p-2 me-2"><i class="fas fa-memory text-success"></i></span>
+                                    <h6 class="mb-0">Memory</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="memory-details" class="metrics-summary-block mb-3"></div>
+                                    <div class="chart-wrapper metrics-chart-wrapper">
+                                        <canvas id="detailedMemoryChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0"><i class="fas fa-list me-2"></i>Per-container</h6>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm mb-0" id="container-metrics-table">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Container</th>
+                                                <th class="text-end">CPU usage</th>
+                                                <th class="text-end">CPU limit</th>
+                                                <th class="text-end">CPU %</th>
+                                                <th class="text-end">Memory usage</th>
+                                                <th class="text-end">Memory limit</th>
+                                                <th class="text-end">Memory %</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для конфигурации -->
+    <div class="modal fade" id="configModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-code me-2"></i>
+                        YAML Config: <span id="config-pod-name"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="btn-group">
+                            <button class="btn btn-outline-primary" onclick="copyYAML()">
+                                <i class="fas fa-copy me-1"></i>Copy
+                            </button>
+                            <button class="btn btn-outline-success" onclick="downloadYAML()">
+                                <i class="fas fa-download me-1"></i>Download
+                            </button>
+                            <button class="btn btn-outline-warning" onclick="editYAML()">
+                                <i class="fas fa-edit me-1"></i>Edit
+                            </button>
+                        </div>
+                    </div>
+                    <div class="config-container">
+                        <pre id="yaml-content" class="yaml-pre"></pre>
+                        <textarea id="yaml-editor" class="yaml-editor" style="display: none;"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="save-yaml-btn" style="display: none;" onclick="saveYAML()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно пода: вкладки Детали | Логи | Port Forward | YAML | Консоль -->
+    <div class="modal fade" id="detailsModal" tabindex="-1">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header pod-detail-modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-cube me-2"></i>
+                        <span id="details-pod-name"></span>
+                    </h5>
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="deletePodFromDetails()">
+                        <i class="fas fa-trash me-1"></i>Delete
+                    </button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <ul class="nav nav-tabs px-3 pt-2 border-bottom" id="podDetailTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="tab-details-btn" data-bs-toggle="tab" data-bs-target="#tab-details" type="button">Details</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-logs-btn" data-bs-toggle="tab" data-bs-target="#tab-logs" type="button">Logs</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-portforward-btn" data-bs-toggle="tab" data-bs-target="#tab-portforward" type="button">Port Forward</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-yaml-btn" data-bs-toggle="tab" data-bs-target="#tab-yaml" type="button">YAML</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-console-btn" data-bs-toggle="tab" data-bs-target="#tab-console" type="button">Console</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content p-3" id="podDetailTabContent">
+                        <!-- Details -->
+                        <div class="tab-pane fade show active" id="tab-details" role="tabpanel">
+                            <div class="mb-4">
+                                <h6>Basic Information</h6>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <p><strong>Namespace:</strong> <span id="details-namespace"></span></p>
+                                        <p><strong>Status:</strong> <span id="details-status"></span></p>
+                                        <p><strong>Node:</strong> <span id="details-node"></span></p>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <p><strong>Pod IP:</strong> <span id="details-pod-ip"></span></p>
+                                        <p><strong>Host IP:</strong> <span id="details-host-ip"></span></p>
+                                        <p><strong>Created:</strong> <span id="details-created"></span></p>
+                                        <p><strong>Start Time:</strong> <span id="details-start-time"></span></p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-4">
+                                <h6>Labels</h6>
+                                <div class="labels-container" id="details-labels"></div>
+                            </div>
+                            <div class="mb-4">
+                                <h6>Containers</h6>
+                                <div id="containers-list"></div>
+                            </div>
+                            <div class="mb-4">
+                                <h6>Conditions</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm" id="conditions-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Type</th>
+                                                <th>Status</th>
+                                                <th>Last Probe</th>
+                                                <th>Last Transition</th>
+                                                <th>Reason</th>
+                                                <th>Message</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Logs -->
+                        <div class="tab-pane fade" id="tab-logs" role="tabpanel">
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">Tail</span>
+                                        <input type="number" id="detail-log-tail" class="form-control" value="100" min="10" max="10000">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="detail-log-follow" checked>
+                                        <label class="form-check-label" for="detail-log-follow">Follow</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 d-flex align-items-center gap-2">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="startDetailLogs()"><i class="fas fa-play me-1"></i>Start</button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="stopDetailLogs()"><i class="fas fa-stop me-1"></i>Stop</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearDetailLogs()"><i class="fas fa-trash me-1"></i>Clear</button>
+                                    <small class="text-muted" id="detail-log-count">0 logs</small>
+                                </div>
+                            </div>
+                            <div class="mb-2">
+                                <input type="text" id="detail-log-filter" class="form-control form-control-sm" placeholder="Filter logs...">
+                            </div>
+                            <div class="alert alert-info py-2 small" id="detail-logs-status">Click Start to load logs</div>
+                            <div class="logs-container detail-logs-container">
+                                <pre id="detail-logs-content" class="logs-pre"></pre>
+                            </div>
+                        </div>
+                        <!-- Port Forward -->
+                        <div class="tab-pane fade" id="tab-portforward" role="tabpanel">
+                            <input type="hidden" id="detail-pf-pod">
+                            <input type="hidden" id="detail-pf-namespace">
+                            <div class="mb-3">
+                                <label class="form-label">Remote port (in pod)</label>
+                                <input type="number" id="detail-pf-remote-port" class="form-control" placeholder="e.g. 8080" min="1" max="65535">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Local port (optional)</label>
+                                <input type="number" id="detail-pf-local-port" class="form-control" placeholder="auto" min="1024" max="65535">
+                            </div>
+                            <div class="mb-3">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary" onclick="setDetailPort(80)">80</button>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="setDetailPort(8080)">8080</button>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="setDetailPort(3000)">3000</button>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="setDetailPort(5432)">5432</button>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-primary" onclick="startPortForwardFromDetail()"><i class="fas fa-play me-1"></i>Start Port Forward</button>
+                            <div id="detail-portforward-result" class="mt-3" style="display: none;">
+                                <div class="alert alert-success">
+                                    <p class="mb-1">Active: <a href="#" id="detail-forwarded-link" target="_blank"></a></p>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="stopPortForwardFromDetail()"><i class="fas fa-stop me-1"></i>Stop</button>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- YAML -->
+                        <div class="tab-pane fade" id="tab-yaml" role="tabpanel">
+                            <div class="mb-3">
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="copyDetailYaml()"><i class="fas fa-copy me-1"></i>Copy</button>
+                                <button type="button" class="btn btn-sm btn-outline-success" onclick="downloadDetailYaml()"><i class="fas fa-download me-1"></i>Download</button>
+                                <button type="button" class="btn btn-sm btn-outline-warning" onclick="toggleDetailYamlEdit()"><i class="fas fa-edit me-1"></i>Edit</button>
+                                <button type="button" class="btn btn-sm btn-primary d-none" id="detail-yaml-save-btn" onclick="saveDetailYaml()"><i class="fas fa-save me-1"></i>Save</button>
+                            </div>
+                            <div class="config-container">
+                                <pre id="detail-yaml-content" class="yaml-pre"></pre>
+                                <textarea id="detail-yaml-editor" class="yaml-editor d-none" style="min-height: 400px;"></textarea>
+                            </div>
+                        </div>
+                        <!-- Console -->
+                        <div class="tab-pane fade" id="tab-console" role="tabpanel">
+                            <div class="detail-console-wrap">
+                                <iframe id="detail-console-iframe" title="Pod Console" class="detail-console-iframe"></iframe>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Скрипты (версия для сброса кэша при обновлении) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/pods.js?v=tabbed"></script>
+</body>
+</html>

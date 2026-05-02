@@ -1,0 +1,207 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: k8s-manager
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        # Change URL if Prometheus service has another DNS name/namespace.
+        url: http://prometheus-server.monitoring.svc.cluster.local
+        isDefault: true
+        editable: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: k8s-manager
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: k8s-manager-dashboards
+        orgId: 1
+        folder: K8s Manager
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-overview
+  namespace: k8s-manager
+data:
+  k8s-manager-overview.json: |
+    {
+      "annotations": { "list": [ { "builtIn": 1, "datasource": "-- Grafana --", "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard" } ] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "panels": [
+        { "datasource": "Prometheus", "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }, "id": 1, "targets": [ { "expr": "sum(rate(http_requests_total[5m]))", "legendFormat": "all requests", "refId": "A" } ], "title": "HTTP Throughput (RPS)", "type": "timeseries" },
+        { "datasource": "Prometheus", "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] }, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }, "id": 2, "targets": [ { "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 0.0001)", "legendFormat": "5xx error ratio", "refId": "A" } ], "title": "5xx Error Ratio", "type": "timeseries" },
+        { "datasource": "Prometheus", "fieldConfig": { "defaults": {}, "overrides": [] }, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }, "id": 3, "targets": [ { "expr": "sum(rate(http_requests_total{path=~\"/api/auth.*\",status=~\"401|403\"}[5m]))", "legendFormat": "auth failures/s", "refId": "A" } ], "title": "Auth Failures", "type": "timeseries" },
+        { "datasource": "Prometheus", "fieldConfig": { "defaults": {}, "overrides": [] }, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }, "id": 4, "targets": [ { "expr": "sum(rate(rbac_denied_total[5m]))", "legendFormat": "rbac denies/s", "refId": "A" } ], "title": "RBAC Denies", "type": "timeseries" }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "style": "dark",
+      "tags": [ "k8s-manager", "overview" ],
+      "templating": { "list": [] },
+      "time": { "from": "now-6h", "to": "now" },
+      "timepicker": {},
+      "timezone": "",
+      "title": "K8s Manager / Overview",
+      "uid": "k8s-manager-overview",
+      "version": 1,
+      "weekStart": ""
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-slo
+  namespace: k8s-manager
+data:
+  k8s-manager-slo.json: |
+    {
+      "annotations": { "list": [ { "builtIn": 1, "datasource": "-- Grafana --", "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard" } ] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "panels": [
+        { "datasource": "Prometheus", "fieldConfig": { "defaults": { "mappings": [], "max": 1, "min": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": 0 }, { "color": "yellow", "value": 0.99 }, { "color": "green", "value": 0.995 } ] }, "unit": "percentunit" }, "overrides": [] }, "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 }, "id": 1, "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false }, "textMode": "auto" }, "targets": [ { "expr": "1 - (sum(rate(http_requests_total{status=~\"5..\"}[30d])) / clamp_min(sum(rate(http_requests_total[30d])), 0.0001))", "legendFormat": "availability_30d", "refId": "A" } ], "title": "Availability SLI (30d)", "type": "stat" },
+        { "datasource": "Prometheus", "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] }, "gridPos": { "h": 8, "w": 16, "x": 8, "y": 0 }, "id": 2, "targets": [ { "expr": "1 - (sum(rate(http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 0.0001))", "legendFormat": "availability_now", "refId": "A" } ], "title": "Availability SLI (5m rolling)", "type": "timeseries" },
+        { "datasource": "Prometheus", "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] }, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }, "id": 3, "targets": [ { "expr": "(0.995 - (1 - (sum(rate(http_requests_total{status=~\"5..\"}[30d])) / clamp_min(sum(rate(http_requests_total[30d])), 0.0001)))) / (1 - 0.995)", "legendFormat": "error budget remaining", "refId": "A" } ], "title": "Error Budget Remaining (SLO 99.5%)", "type": "timeseries" },
+        { "datasource": "Prometheus", "fieldConfig": { "defaults": {}, "overrides": [] }, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }, "id": 4, "targets": [ { "expr": "sum(rate(rbac_denied_total[5m]))", "legendFormat": "rbac denies/s", "refId": "A" } ], "title": "RBAC Denies Burn Indicator", "type": "timeseries" }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "style": "dark",
+      "tags": [ "k8s-manager", "slo" ],
+      "templating": { "list": [] },
+      "time": { "from": "now-30d", "to": "now" },
+      "timepicker": {},
+      "timezone": "",
+      "title": "K8s Manager / SLO",
+      "uid": "k8s-manager-slo",
+      "version": 1,
+      "weekStart": ""
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: k8s-manager
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:11.1.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          valueFrom:
+            secretKeyRef:
+              name: grafana-admin-auth
+              key: admin-user
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: grafana-admin-auth
+              key: admin-password
+        - name: GF_SERVER_ROOT_URL
+          value: https://grafana.k8s-manager.local
+        - name: GF_SERVER_DOMAIN
+          value: grafana.k8s-manager.local
+        volumeMounts:
+        - name: datasources
+          mountPath: /etc/grafana/provisioning/datasources
+        - name: dashboard-provider
+          mountPath: /etc/grafana/provisioning/dashboards
+        - name: overview-dashboard
+          mountPath: /var/lib/grafana/dashboards/k8s-manager-overview.json
+          subPath: k8s-manager-overview.json
+        - name: slo-dashboard
+          mountPath: /var/lib/grafana/dashboards/k8s-manager-slo.json
+          subPath: k8s-manager-slo.json
+      volumes:
+      - name: datasources
+        configMap:
+          name: grafana-datasources
+      - name: dashboard-provider
+        configMap:
+          name: grafana-dashboard-provider
+      - name: overview-dashboard
+        configMap:
+          name: grafana-dashboard-overview
+      - name: slo-dashboard
+        configMap:
+          name: grafana-dashboard-slo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: k8s-manager
+  labels:
+    app: grafana
+spec:
+  type: ClusterIP
+  selector:
+    app: grafana
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: k8s-manager
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: grafana.k8s-manager.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
+  tls:
+  - hosts:
+    - grafana.k8s-manager.local
+    secretName: grafana-tls

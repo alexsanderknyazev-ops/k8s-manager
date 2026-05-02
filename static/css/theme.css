@@ -1,0 +1,141 @@
+/* Минималистичная нейтральная тема: спокойные тона, один акцент */
+:root {
+    --primary: #475569;
+    --primary-hover: #334155;
+    --primary-light: rgba(71, 85, 105, 0.08);
+    --bg-page: #f8fafc;
+    --bg-card: #ffffff;
+    --border: #e2e8f0;
+    --border-light: #f1f5f9;
+    --text: #334155;
+    --text-muted: #64748b;
+    --sidebar-bg: #ffffff;
+    --sidebar-border: #e2e8f0;
+    --sidebar-text: #475569;
+    --sidebar-text-muted: #94a3b8;
+    --sidebar-hover: rgba(71, 85, 105, 0.06);
+    --sidebar-active: rgba(71, 85, 105, 0.1);
+}
+
+body {
+    background-color: var(--bg-page);
+    color: var(--text);
+}
+
+/* Акцент — приглушённый slate */
+.btn-primary,
+.bg-primary {
+    background-color: var(--primary) !important;
+    border-color: var(--primary) !important;
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-hover) !important;
+    border-color: var(--primary-hover) !important;
+}
+
+.btn-outline-primary {
+    color: var(--primary) !important;
+    border-color: var(--border) !important;
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--primary-light) !important;
+    color: var(--primary-hover) !important;
+    border-color: var(--primary) !important;
+}
+
+.badge.bg-primary {
+    background-color: var(--primary) !important;
+}
+
+.border-primary {
+    border-color: var(--primary) !important;
+}
+
+.progress-bar.bg-primary {
+    background-color: var(--primary) !important;
+}
+
+.list-group-item.active {
+    background-color: var(--primary) !important;
+    border-color: var(--primary) !important;
+}
+
+.text-primary {
+    color: var(--primary) !important;
+}
+
+.link-primary {
+    color: var(--primary) !important;
+}
+
+.link-primary:hover {
+    color: var(--primary-hover) !important;
+}
+
+.status-card {
+    border-left-color: var(--primary) !important;
+}
+
+/* Приглушённые фоны для карточек со статусом (все страницы) */
+.bg-success.bg-opacity-10,
+.bg-opacity-10.bg-success { background-color: rgba(71, 85, 105, 0.1) !important; }
+.bg-warning.bg-opacity-10,
+.bg-opacity-10.bg-warning { background-color: rgba(148, 163, 184, 0.1) !important; }
+.bg-danger.bg-opacity-10,
+.bg-opacity-10.bg-danger { background-color: rgba(148, 163, 184, 0.08) !important; }
+.bg-info.bg-opacity-10,
+.bg-opacity-10.bg-info { background-color: rgba(71, 85, 105, 0.08) !important; }
+
+/* Dark theme */
+html.theme-dark {
+    color-scheme: dark;
+}
+html.theme-dark :root,
+html.theme-dark {
+    --primary: #94a3b8;
+    --primary-hover: #cbd5e1;
+    --primary-light: rgba(148, 163, 184, 0.15);
+    --bg-page: #0f172a;
+    --bg-card: #1e293b;
+    --border: #334155;
+    --border-light: #1e293b;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --sidebar-bg: #1e293b;
+    --sidebar-border: #334155;
+    --sidebar-text: #e2e8f0;
+    --sidebar-text-muted: #94a3b8;
+    --sidebar-hover: rgba(148, 163, 184, 0.1);
+    --sidebar-active: rgba(148, 163, 184, 0.18);
+}
+html.theme-dark .form-control,
+html.theme-dark .form-select {
+    background-color: #334155;
+    border-color: #475569;
+    color: #e2e8f0;
+}
+html.theme-dark .table {
+    --bs-table-bg: transparent;
+    --bs-table-striped-bg: rgba(51, 65, 85, 0.3);
+    --bs-table-hover-bg: rgba(51, 65, 85, 0.5);
+    color: #e2e8f0;
+}
+html.theme-dark .table th,
+html.theme-dark .table td {
+    border-color: #334155;
+}
+html.theme-dark #global-search-results {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border) !important;
+}
+html.theme-dark #global-search-results a {
+    color: var(--text) !important;
+}
+html.theme-dark .breadcrumb-item a {
+    color: var(--primary);
+}
+html.theme-dark .text-muted {
+    color: var(--text-muted) !important;
+}

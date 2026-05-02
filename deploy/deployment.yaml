@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8s-manager
+  labels:
+    app: k8s-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-manager
+  namespace: k8s-manager
+  labels:
+    app: k8s-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-manager
+  template:
+    metadata:
+      labels:
+        app: k8s-manager
+    spec:
+      serviceAccountName: k8s-manager
+      securityContext:
+        allowPrivilegeEscalation: false
+      containers:
+      - name: k8s-manager
+        image: k8s-manager:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: PORT
+          value: "8080"
+        # Аутентификация через Secret (опционально)
+        # - name: AUTH_USER
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: k8s-manager-auth
+        #       key: username
+        # - name: AUTH_PASSWORD
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: k8s-manager-auth
+        #       key: password
+        # При доступе через HTTPS (Ingress TLS):
+        # - name: COOKIE_SECURE
+        #   value: "true"
+        # - name: LOG_LEVEL
+        #   value: "info"
+        # - name: LOG_FORMAT
+        #   value: "json"
+        # - name: RATE_LIMIT_LOGIN_PER_MIN
+        #   value: "10"
+        # - name: RATE_LIMIT_API_PER_MIN
+        #   value: "300"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-manager
+  namespace: k8s-manager
+  labels:
+    app: k8s-manager
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  selector:
+    app: k8s-manager
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-manager
+  namespace: k8s-manager
+  labels:
+    app: k8s-manager
