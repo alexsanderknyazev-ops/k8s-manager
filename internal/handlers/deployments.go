@@ -240,10 +240,10 @@ func (h *Handler) RestartDeploymentHandler(c *gin.Context) {
 	}
 
 	// Добавляем аннотацию для рестарта
-	if deployment.Spec.Template.ObjectMeta.Annotations == nil {
-		deployment.Spec.Template.ObjectMeta.Annotations = make(map[string]string)
+	if deployment.Spec.Template.Annotations == nil {
+		deployment.Spec.Template.Annotations = make(map[string]string)
 	}
-	deployment.Spec.Template.ObjectMeta.Annotations["kubectl.kubernetes.io/restartedAt"] =
+	deployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] =
 		time.Now().Format(time.RFC3339)
 
 	_, err = h.clientset.AppsV1().Deployments(namespace).Update(

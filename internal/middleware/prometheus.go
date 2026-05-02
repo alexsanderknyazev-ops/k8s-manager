@@ -54,11 +54,11 @@ func MetricsHandler(c *gin.Context) {
 		parts = append(parts, fmt.Sprintf("http_requests_total{method=%q,path=%q,status=%q} %d", seg[0], seg[1], seg[2], count))
 	}
 	for _, p := range parts {
-		c.Writer.Write([]byte(p + "\n"))
+		_, _ = c.Writer.Write([]byte(p + "\n"))
 	}
 	_, _ = fmt.Fprintf(c.Writer, "rbac_denied_total %d\n", rbacDeny)
 	if len(parts) == 0 {
-		c.Writer.Write([]byte("# No requests yet\n"))
+		_, _ = c.Writer.Write([]byte("# No requests yet\n"))
 	}
 	c.Status(http.StatusOK)
 }

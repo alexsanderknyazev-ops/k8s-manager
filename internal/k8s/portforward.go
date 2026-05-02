@@ -111,7 +111,7 @@ func IsPortInUse(port int) bool {
 		return false
 	}
 	if conn != nil {
-		conn.Close()
+		_ = conn.Close()
 		return true
 	}
 	return false

@@ -20,7 +20,7 @@ func startMinikubeStable(ctx context.Context) error {
 	}
 
 	// Порядок драйверов: на Mac ARM часто стабильнее qemu2; можно задать MINIKUBE_DRIVER
-	drivers := []string{}
+	var drivers []string
 	if d := os.Getenv("MINIKUBE_DRIVER"); d != "" {
 		drivers = []string{d}
 	} else if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {

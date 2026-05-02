@@ -134,7 +134,7 @@ func GetPodMetrics(metricsClient metricsv.Interface, clientset kubernetes.Interf
 		// Исправляем форматирование времени
 		timestampStr := ""
 		if !pm.Timestamp.IsZero() {
-			timestampStr = pm.Timestamp.Time.Format(time.RFC3339)
+			timestampStr = pm.Timestamp.Format(time.RFC3339)
 		}
 
 		metrics = append(metrics, PodMetrics{
@@ -224,7 +224,7 @@ func GetNodeMetrics(metricsClient metricsv.Interface, clientset kubernetes.Inter
 		// Исправляем форматирование времени
 		timestampStr := ""
 		if !nm.Timestamp.IsZero() {
-			timestampStr = nm.Timestamp.Time.Format(time.RFC3339)
+			timestampStr = nm.Timestamp.Format(time.RFC3339)
 		}
 
 		metrics = append(metrics, NodeMetrics{

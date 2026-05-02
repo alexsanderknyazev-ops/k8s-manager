@@ -93,8 +93,7 @@
  * @param {string} type - 'info' | 'success' | 'warning' | 'error' | 'danger'
  */
 function showToast(message, type) {
-    type = type || 'info';
-    if (type === 'danger') type = 'error';
+    type = normalizeToastType(type);
     let container = document.getElementById('toast-container');
     if (!container) {
         container = document.createElement('div');
@@ -114,12 +113,6 @@ function showToast(message, type) {
         el.classList.remove('show');
         setTimeout(function () { el.remove(); }, 150);
     }, 4000);
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 /**
@@ -168,6 +161,9 @@ function confirmDialog(title, body, confirmLabel, confirmClass) {
 }
 
 function getCSRFToken() {
+    if (typeof csrfTokenFromCookies === 'function') {
+        return csrfTokenFromCookies(document.cookie);
+    }
     const name = 'k8s_manager_csrf=';
     const ca = document.cookie.split(';');
     for (let i = 0; i < ca.length; i++) {

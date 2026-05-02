@@ -148,7 +148,7 @@ func (h *Handler) GetSinglePodMetricsHandler(c *gin.Context) {
 	// Получаем timestamp с проверкой
 	timestampStr := ""
 	if !podMetrics.Timestamp.IsZero() {
-		timestampStr = podMetrics.Timestamp.Time.Format(time.RFC3339)
+		timestampStr = podMetrics.Timestamp.Format(time.RFC3339)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
