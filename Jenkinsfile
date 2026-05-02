@@ -77,10 +77,12 @@ esac
 ZIP="sonar-scanner-cli-${env.SONAR_SCANNER_VERSION}-linux-\${ZIP_ARCH}.zip"
 URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/\${ZIP}"
 curl -fsSL "\$URL" -o "/tmp/\${ZIP}"
-rm -rf /tmp/sonar-scanner-extract
-mkdir -p /tmp/sonar-scanner-extract
-unzip -q -o "/tmp/\${ZIP}" -d /tmp/sonar-scanner-extract
-SCANNER_HOME="\$(find /tmp/sonar-scanner-extract -maxdepth 1 -type d -name 'sonar-scanner-*' | head -1)"
+# Родитель нельзя называть sonar-scanner-* — find совпадёт с ним раньше, чем с каталогом из zip.
+SCANNER_ROOT=/tmp/ss-unpack
+rm -rf "\${SCANNER_ROOT}"
+mkdir -p "\${SCANNER_ROOT}"
+unzip -q -o "/tmp/\${ZIP}" -d "\${SCANNER_ROOT}"
+SCANNER_HOME="\$(find "\${SCANNER_ROOT}" -maxdepth 1 -mindepth 1 -type d -name 'sonar-scanner-*' | head -1)"
 test -x "\${SCANNER_HOME}/bin/sonar-scanner"
 
 cd "\${WORKSPACE}"
