@@ -22,10 +22,12 @@ pipeline {
 
     stage('Go test + coverage') {
       steps {
-        // GO_VERSION из environment в одинарных ''' не попадает в bash надёжно; пустой ${GO_VERSION} даёт grep -F «go» → ложное совпадение и старый Go в /usr/local/go.
+        // GOTOOLCHAIN=local до любого вызова go: иначе go version под auto скачает toolchain и покажет 1.25, а после local останется старый GOROOT 1.23.
+        // Проверяем только /usr/local/go/bin/go — не «go» из PATH с другим поведением.
         sh """#!/bin/bash
 set -eux
 GO_VER='${env.GO_VERSION ?: '1.25.0'}'
+export GOTOOLCHAIN=local
 export PATH="/usr/local/go/bin:\${PATH}"
 
 ARCH="\$(uname -m)"
@@ -35,8 +37,8 @@ case "\$ARCH" in
   *) echo "unsupported arch: \$ARCH"; exit 1 ;;
 esac
 
-if command -v go >/dev/null 2>&1 && go version 2>/dev/null | grep -qF "go\${GO_VER}"; then
-  echo "Go already at \${GO_VER}"
+if [ -x /usr/local/go/bin/go ] && /usr/local/go/bin/go version 2>/dev/null | grep -qF "go\${GO_VER}"; then
+  echo "Go already at \${GO_VER} under /usr/local/go"
 else
   curl -fsSL "https://go.dev/dl/go\${GO_VER}.linux-\${GOARCH}.tar.gz" -o /tmp/go.tgz
   rm -rf /usr/local/go
