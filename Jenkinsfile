@@ -11,6 +11,8 @@ pipeline {
     // Совпадает с директивой `go` в go.mod; полный tarball + GOTOOLCHAIN=local — иначе `covdata` при GOTOOLCHAIN=auto.
     GO_VERSION = '1.25.0'
     SONAR_SCANNER_VERSION = '8.0.1.6346'
+    // Для сенсора JS/TS/CSS Sonar нужен Node.js в PATH (static/js, static/css в репозитории).
+    NODE_JS_VERSION = '20.18.1'
   }
 
   stages {
@@ -62,17 +64,27 @@ go test ./... -coverprofile=coverage.out -covermode=atomic
       steps {
         sh """#!/bin/bash
 set -eux
-if ! command -v curl >/dev/null 2>&1 || ! command -v unzip >/dev/null 2>&1; then
+if ! command -v curl >/dev/null 2>&1 || ! command -v unzip >/dev/null 2>&1 || ! command -v xz >/dev/null 2>&1; then
   apt-get update -qq
-  apt-get install -y -qq curl ca-certificates unzip
+  apt-get install -y -qq curl ca-certificates unzip xz-utils
 fi
 
 ARCH="\$(uname -m)"
 case "\$ARCH" in
-  aarch64|arm64) ZIP_ARCH=aarch64 ;;
-  x86_64) ZIP_ARCH=x64 ;;
+  aarch64|arm64) ZIP_ARCH=aarch64; NODE_DIST_ARCH=arm64 ;;
+  x86_64) ZIP_ARCH=x64; NODE_DIST_ARCH=x64 ;;
   *) echo "unsupported arch: \$ARCH"; exit 1 ;;
 esac
+
+NODE_VER='${env.NODE_JS_VERSION ?: '20.18.1'}'
+NODE_BASE="node-v\${NODE_VER}-linux-\${NODE_DIST_ARCH}"
+NODE_ROOT="/usr/local/\${NODE_BASE}"
+if [ ! -x "\${NODE_ROOT}/bin/node" ]; then
+  curl -fsSL "https://nodejs.org/dist/v\${NODE_VER}/\${NODE_BASE}.tar.xz" -o /tmp/node.txz
+  tar -C /usr/local -xJf /tmp/node.txz
+fi
+export PATH="\${NODE_ROOT}/bin:\${PATH}"
+node -v
 
 ZIP="sonar-scanner-cli-${env.SONAR_SCANNER_VERSION}-linux-\${ZIP_ARCH}.zip"
 URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/\${ZIP}"
