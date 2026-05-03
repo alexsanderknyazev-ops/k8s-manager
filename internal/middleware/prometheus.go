@@ -56,7 +56,7 @@ func MetricsHandler(c *gin.Context) {
 	for _, p := range parts {
 		c.Writer.Write([]byte(p + "\n"))
 	}
-	c.Writer.Write([]byte(fmt.Sprintf("rbac_denied_total %d\n", rbacDeny)))
+	_, _ = fmt.Fprintf(c.Writer, "rbac_denied_total %d\n", rbacDeny)
 	if len(parts) == 0 {
 		c.Writer.Write([]byte("# No requests yet\n"))
 	}
