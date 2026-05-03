@@ -1,10 +1,15 @@
-.PHONY: build test run docker-build docker-run clean migrate-up migrate-down migrate-status dev-run dev-start dev-stop dev-restart
+.PHONY: build test test-js test-all run docker-build docker-run clean migrate-up migrate-down migrate-status dev-run dev-start dev-stop dev-restart
 
 build:
 	go build -o k8s-manager .
 
 test:
 	go test ./...
+
+test-js:
+	node --test static/js/utils.test.mjs
+
+test-all: test test-js
 
 run:
 	go run .

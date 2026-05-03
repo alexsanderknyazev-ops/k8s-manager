@@ -4,3 +4,7 @@ k8s-manager
 
 # IDE
 .idea/
+
+# Coverage (go test -coverprofile)
+coverage.out
+h.out

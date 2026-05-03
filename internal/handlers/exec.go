@@ -53,12 +53,12 @@ func (h *Handler) PodExecWSHandler(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if container == "" {
 		pod, err := h.clientset.CoreV1().Pods(namespace).Get(c.Request.Context(), podName, metav1.GetOptions{})
 		if err != nil {
-			conn.WriteMessage(websocket.TextMessage, []byte("Error: pod not found\r\n"))
+			_ = conn.WriteMessage(websocket.TextMessage, []byte("Error: pod not found\r\n"))
 			return
 		}
 		if len(pod.Spec.Containers) > 0 {
@@ -66,7 +66,7 @@ func (h *Handler) PodExecWSHandler(c *gin.Context) {
 		}
 	}
 	if container == "" {
-		conn.WriteMessage(websocket.TextMessage, []byte("Error: no container\r\n"))
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("Error: no container\r\n"))
 		return
 	}
 
@@ -84,7 +84,7 @@ func (h *Handler) PodExecWSHandler(c *gin.Context) {
 
 	executor, err := remotecommand.NewSPDYExecutor(h.restConfig, "POST", req.URL())
 	if err != nil {
-		conn.WriteMessage(websocket.TextMessage, []byte("Error: "+err.Error()+"\r\n"))
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("Error: "+err.Error()+"\r\n"))
 		return
 	}
 
@@ -100,7 +100,7 @@ func (h *Handler) PodExecWSHandler(c *gin.Context) {
 
 	go func() {
 		defer wg.Done()
-		defer stdoutW.Close()
+		defer func() { _ = stdoutW.Close() }()
 		buf := make([]byte, 4096)
 		for {
 			n, err := stdoutR.Read(buf)
@@ -117,15 +117,15 @@ func (h *Handler) PodExecWSHandler(c *gin.Context) {
 
 	go func() {
 		defer wg.Done()
-		err := executor.Stream(remotecommand.StreamOptions{
+		err := executor.StreamWithContext(c.Request.Context(), remotecommand.StreamOptions{
 			Stdin:             stdinR,
 			Stdout:            stdoutW,
 			Stderr:            stdoutW,
 			Tty:               true,
 			TerminalSizeQueue: sizeQ,
 		})
-		stdinW.Close()
-		stdoutW.Close()
+		_ = stdinW.Close()
+		_ = stdoutW.Close()
 		if err != nil {
 			slog.Debug("exec stream ended", "err", err)
 		}
@@ -157,6 +157,6 @@ func (h *Handler) PodExecWSHandler(c *gin.Context) {
 		}
 	}
 	close(sizeCh)
-	stdinW.Close()
+	_ = stdinW.Close()
 	wg.Wait()
 }

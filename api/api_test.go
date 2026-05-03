@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"k8s-manager/internal/auth"
@@ -12,8 +13,8 @@ import (
 	"k8s-manager/internal/store"
 
 	"github.com/gin-gonic/gin"
+	metricsfake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 	"k8s.io/client-go/kubernetes/fake"
-	metricsv "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 )
 
 type mockPermManager struct {
@@ -45,7 +46,7 @@ func TestHealthWithoutAuth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{Auth: config.AuthConfig{Enabled: false}}
 	r := gin.New()
-	SetupRoutes(r, fake.NewSimpleClientset(), metricsv.NewSimpleClientset(), nil, cfg, nil, nil, nil)
+	SetupRoutes(r, fake.NewClientset(), metricsfake.NewSimpleClientset(), nil, cfg, nil, nil, nil) //nolint:staticcheck
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	rec := httptest.NewRecorder()
@@ -56,6 +57,47 @@ func TestHealthWithoutAuth(t *testing.T) {
 	}
 }
 
+func TestAPIDocsWithoutAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{Auth: config.AuthConfig{Enabled: false}}
+	r := gin.New()
+	SetupRoutes(r, fake.NewClientset(), metricsfake.NewSimpleClientset(), nil, cfg, nil, nil, nil) //nolint:staticcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/docs", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET /api/docs: want 200, got %d", rec.Code)
+	}
+}
+
+func TestMetricsWithoutAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{Auth: config.AuthConfig{Enabled: false}}
+	r := gin.New()
+	SetupRoutes(r, fake.NewClientset(), metricsfake.NewSimpleClientset(), nil, cfg, nil, nil, nil) //nolint:staticcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET /metrics: want 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "rbac_denied_total") {
+		t.Errorf("GET /metrics: expected rbac_denied_total in body, got %q", truncate(body, 300))
+	}
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
 func TestHealthWithAuthIsPublic(t *testing.T) {
 	// /api/health доступен без авторизации (для liveness/readiness проб)
 	gin.SetMode(gin.TestMode)
@@ -63,7 +105,7 @@ func TestHealthWithAuthIsPublic(t *testing.T) {
 		Auth: config.AuthConfig{Enabled: true, Username: "admin", Password: "secret"},
 	}
 	r := gin.New()
-	SetupRoutes(r, fake.NewSimpleClientset(), metricsv.NewSimpleClientset(), nil, cfg, nil, nil, nil)
+	SetupRoutes(r, fake.NewClientset(), metricsfake.NewSimpleClientset(), nil, cfg, nil, nil, nil) //nolint:staticcheck
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	rec := httptest.NewRecorder()
@@ -80,7 +122,7 @@ func TestLoginWrongPasswordReturns401(t *testing.T) {
 		Auth: config.AuthConfig{Enabled: true, Username: "admin", Password: "secret"},
 	}
 	r := gin.New()
-	SetupRoutes(r, fake.NewSimpleClientset(), metricsv.NewSimpleClientset(), nil, cfg, nil, nil, nil)
+	SetupRoutes(r, fake.NewClientset(), metricsfake.NewSimpleClientset(), nil, cfg, nil, nil, nil) //nolint:staticcheck
 
 	body := []byte(`{"username":"admin","password":"wrong"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewReader(body))
@@ -99,7 +141,7 @@ func TestProtectedRouteWithoutSessionReturns401(t *testing.T) {
 		Auth: config.AuthConfig{Enabled: true, Username: "admin", Password: "secret"},
 	}
 	r := gin.New()
-	SetupRoutes(r, fake.NewSimpleClientset(), metricsv.NewSimpleClientset(), nil, cfg, nil, nil, nil)
+	SetupRoutes(r, fake.NewClientset(), metricsfake.NewSimpleClientset(), nil, cfg, nil, nil, nil) //nolint:staticcheck
 
 	req := httptest.NewRequest(http.MethodGet, "/api/namespaces", nil)
 	req.Header.Set("Accept", "application/json")
@@ -119,7 +161,7 @@ func TestRBACAllowWithPermissionAndSession(t *testing.T) {
 	pm := &mockPermManager{allow: map[string]bool{}}
 	pm.allow[pm.key("alice", "default", "pods", "read")] = true
 	r := gin.New()
-	SetupRoutes(r, fake.NewSimpleClientset(), metricsv.NewSimpleClientset(), nil, cfg, nil, nil, pm)
+	SetupRoutes(r, fake.NewClientset(), metricsfake.NewSimpleClientset(), nil, cfg, nil, nil, pm) //nolint:staticcheck
 
 	sid, err := auth.CreateSession(context.Background(), "alice", "")
 	if err != nil {
@@ -142,7 +184,7 @@ func TestRBACDenyWithoutPermissionEvenWithSession(t *testing.T) {
 	}
 	pm := &mockPermManager{allow: map[string]bool{}}
 	r := gin.New()
-	SetupRoutes(r, fake.NewSimpleClientset(), metricsv.NewSimpleClientset(), nil, cfg, nil, nil, pm)
+	SetupRoutes(r, fake.NewClientset(), metricsfake.NewSimpleClientset(), nil, cfg, nil, nil, pm) //nolint:staticcheck
 
 	sid, err := auth.CreateSession(context.Background(), "alice", "")
 	if err != nil {
@@ -167,7 +209,7 @@ func TestPermissionsAPIDeniedWithoutPermissionsResourceAccess(t *testing.T) {
 		"alice|default|pods|read": true, // не даёт права на /api/permissions
 	}}
 	r := gin.New()
-	SetupRoutes(r, fake.NewSimpleClientset(), metricsv.NewSimpleClientset(), nil, cfg, nil, nil, pm)
+	SetupRoutes(r, fake.NewClientset(), metricsfake.NewSimpleClientset(), nil, cfg, nil, nil, pm) //nolint:staticcheck
 
 	sid, err := auth.CreateSession(context.Background(), "alice", "")
 	if err != nil {

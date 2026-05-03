@@ -97,7 +97,7 @@ func (h *Handler) StartLogStreamHandler(c *gin.Context) {
 		slog.Warn("WebSocket upgrade error", "err", err)
 		return
 	}
-	defer ws.Close()
+	defer func() { _ = ws.Close() }()
 
 	// Создаем ID стрима
 	streamID := fmt.Sprintf("%s-%s-%d", namespace, podName, time.Now().UnixNano())
@@ -140,7 +140,7 @@ func (h *Handler) StartLogStreamHandler(c *gin.Context) {
 	slog.Info("Log stream started", "namespace", namespace, "pod", podName, "follow", follow, "tail", tailLines)
 
 	// Отправляем начальное сообщение
-	ws.WriteJSON(LogMessage{
+	_ = ws.WriteJSON(LogMessage{
 		Type:    "info",
 		Message: fmt.Sprintf("Log stream started for pod %s/%s", namespace, podName),
 		Time:    time.Now().Format(time.RFC3339),
@@ -149,7 +149,7 @@ func (h *Handler) StartLogStreamHandler(c *gin.Context) {
 	// Запускаем чтение логов
 	err = h.streamPodLogs(stream, h.clientset)
 	if err != nil {
-		ws.WriteJSON(LogMessage{
+		_ = ws.WriteJSON(LogMessage{
 			Type:    "error",
 			Message: fmt.Sprintf("Error streaming logs: %v", err),
 			Time:    time.Now().Format(time.RFC3339),
@@ -171,7 +171,7 @@ func (h *Handler) streamPodLogs(stream *LogStream, clientset kubernetes.Interfac
 	// Получаем информацию о поде
 	pod, err := clientset.CoreV1().Pods(stream.Namespace).Get(ctx, stream.Pod, metav1.GetOptions{})
 	if err != nil {
-		stream.Conn.WriteJSON(LogMessage{
+		_ = stream.Conn.WriteJSON(LogMessage{
 			Type:    "error",
 			Message: fmt.Sprintf("Pod not found: %v", err),
 			Time:    time.Now().Format(time.RFC3339),
@@ -180,7 +180,7 @@ func (h *Handler) streamPodLogs(stream *LogStream, clientset kubernetes.Interfac
 	}
 
 	// Отправляем информацию о поде
-	stream.Conn.WriteJSON(LogMessage{
+	_ = stream.Conn.WriteJSON(LogMessage{
 		Type: "info",
 		Message: fmt.Sprintf("Pod: %s, Status: %s, Node: %s",
 			pod.Name, pod.Status.Phase, pod.Spec.NodeName),
@@ -219,7 +219,7 @@ func (h *Handler) streamPodLogs(stream *LogStream, clientset kubernetes.Interfac
 			podLogs, err = req.Stream(ctx)
 
 			if err != nil {
-				stream.Conn.WriteJSON(LogMessage{
+				_ = stream.Conn.WriteJSON(LogMessage{
 					Type:    "error",
 					Message: errorMsg,
 					Time:    time.Now().Format(time.RFC3339),
@@ -227,7 +227,7 @@ func (h *Handler) streamPodLogs(stream *LogStream, clientset kubernetes.Interfac
 				return err
 			}
 		} else {
-			stream.Conn.WriteJSON(LogMessage{
+			_ = stream.Conn.WriteJSON(LogMessage{
 				Type:    "error",
 				Message: errorMsg,
 				Time:    time.Now().Format(time.RFC3339),
@@ -235,10 +235,10 @@ func (h *Handler) streamPodLogs(stream *LogStream, clientset kubernetes.Interfac
 			return err
 		}
 	}
-	defer podLogs.Close()
+	defer func() { _ = podLogs.Close() }()
 
 	// Сообщаем об успешном подключении
-	stream.Conn.WriteJSON(LogMessage{
+	_ = stream.Conn.WriteJSON(LogMessage{
 		Type:    "info",
 		Message: "Successfully connected to pod logs",
 		Time:    time.Now().Format(time.RFC3339),
@@ -255,7 +255,7 @@ func (h *Handler) streamPodLogs(stream *LogStream, clientset kubernetes.Interfac
 	for scanner.Scan() {
 		select {
 		case <-stream.StopChan:
-			stream.Conn.WriteJSON(LogMessage{
+			_ = stream.Conn.WriteJSON(LogMessage{
 				Type:    "info",
 				Message: "Log stream stopped by user",
 				Time:    time.Now().Format(time.RFC3339),
@@ -289,7 +289,7 @@ func (h *Handler) streamPodLogs(stream *LogStream, clientset kubernetes.Interfac
 		}
 
 		slog.Warn("Scanner error", "err", err)
-		stream.Conn.WriteJSON(LogMessage{
+		_ = stream.Conn.WriteJSON(LogMessage{
 			Type:    "error",
 			Message: fmt.Sprintf("Error reading logs: %v", err),
 			Time:    time.Now().Format(time.RFC3339),
@@ -300,7 +300,7 @@ func (h *Handler) streamPodLogs(stream *LogStream, clientset kubernetes.Interfac
 	// Если мы здесь, значит сканер закончил (EOF)
 	if stream.Follow {
 		// В режиме follow это может означать, что под перезапустился
-		stream.Conn.WriteJSON(LogMessage{
+		_ = stream.Conn.WriteJSON(LogMessage{
 			Type:    "warning",
 			Message: "Pod logs ended (pod might have restarted). Trying to reconnect...",
 			Time:    time.Now().Format(time.RFC3339),
@@ -312,7 +312,7 @@ func (h *Handler) streamPodLogs(stream *LogStream, clientset kubernetes.Interfac
 	}
 
 	// Если не follow, просто завершаем
-	stream.Conn.WriteJSON(LogMessage{
+	_ = stream.Conn.WriteJSON(LogMessage{
 		Type:    "info",
 		Message: "Log stream completed",
 		Time:    time.Now().Format(time.RFC3339),
@@ -357,10 +357,10 @@ func (h *Handler) WatchPodsHandler(c *gin.Context) {
 		slog.Warn("WebSocket upgrade error", "err", err)
 		return
 	}
-	defer ws.Close()
+	defer func() { _ = ws.Close() }()
 
 	// Начальное сообщение
-	ws.WriteJSON(LogMessage{
+	_ = ws.WriteJSON(LogMessage{
 		Type:    "info",
 		Message: fmt.Sprintf("Started watching pods in namespace: %s", namespace),
 		Time:    time.Now().Format(time.RFC3339),
@@ -373,7 +373,7 @@ func (h *Handler) WatchPodsHandler(c *gin.Context) {
 	// Создаем watcher для подов
 	watcher, err := h.clientset.CoreV1().Pods(namespace).Watch(c.Request.Context(), metav1.ListOptions{})
 	if err != nil {
-		ws.WriteJSON(LogMessage{
+		_ = ws.WriteJSON(LogMessage{
 			Type:    "error",
 			Message: fmt.Sprintf("Failed to create pod watcher: %v", err),
 			Time:    time.Now().Format(time.RFC3339),
@@ -390,7 +390,7 @@ func (h *Handler) WatchPodsHandler(c *gin.Context) {
 
 		case event, ok := <-watcher.ResultChan():
 			if !ok {
-				ws.WriteJSON(LogMessage{
+				_ = ws.WriteJSON(LogMessage{
 					Type:    "warning",
 					Message: "Pod watch channel closed",
 					Time:    time.Now().Format(time.RFC3339),
@@ -404,7 +404,7 @@ func (h *Handler) WatchPodsHandler(c *gin.Context) {
 			}
 
 			// Отправляем событие
-			ws.WriteJSON(map[string]interface{}{
+			_ = ws.WriteJSON(map[string]interface{}{
 				"type":      string(event.Type),
 				"pod":       pod.Name,
 				"namespace": pod.Namespace,

@@ -373,7 +373,7 @@ func StartLocalPortForwardToPostgres(ctx context.Context, clientset kubernetes.I
 		}
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", localPort)), 500*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			password = url.QueryEscape(password)
 			localDSN = fmt.Sprintf("postgres://%s:%s@127.0.0.1:%d/%s?sslmode=disable", user, password, localPort, db)
 			slog.Info("port-forward to postgres ready", "local_port", localPort, "pod", podName)
