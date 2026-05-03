@@ -53,8 +53,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile
           push: false
           load: true
+          pull: true
           tags: k8s-manager:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
