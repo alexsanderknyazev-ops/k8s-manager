@@ -23,8 +23,6 @@ spec:
         app: k8s-manager
     spec:
       serviceAccountName: k8s-manager
-      securityContext:
-        allowPrivilegeEscalation: false
       containers:
       - name: k8s-manager
         image: k8s-manager:latest

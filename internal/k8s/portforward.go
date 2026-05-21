@@ -7,11 +7,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/portforward"
@@ -236,18 +234,5 @@ func StartPortForward(session *PortForwardSession, clientset kubernetes.Interfac
 }
 
 func getK8sConfig() (*rest.Config, error) {
-	// Попробовать получить конфиг из кластера
-	config, err := rest.InClusterConfig()
-	if err == nil {
-		return config, nil
-	}
-
-	// Использовать локальный kubeconfig
-	kubeconfig := os.Getenv("KUBECONFIG")
-	if kubeconfig == "" {
-		home, _ := os.UserHomeDir()
-		kubeconfig = filepath.Join(home, ".kube", "config")
-	}
-
-	return clientcmd.BuildConfigFromFlags("", kubeconfig)
+	return BuildRESTConfig("")
 }

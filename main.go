@@ -21,17 +21,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 func main() {
-	// Подкоманда dev-cluster: поднять/убить minikube + Kafka + Zookeeper для тестов (Postgres поднимется при старте приложения).
+	// Подкоманда dev-cluster: minikube и опционально market/Kafka/ZK (см. DEV_CLUSTER_SKIP_MARKET), Postgres — при старте приложения.
 	if len(os.Args) >= 2 && os.Args[1] == "dev-cluster" {
 		args := os.Args[2:]
 		if len(args) >= 1 && args[0] == "run" {
 			_ = os.Setenv("SEED_TEST_USERS", "true")
-			// Одна команда: поднять кластер (minikube + Kafka + Zookeeper), затем запустить приложение (Postgres поднимется сам).
+			// Одна команда: поднять кластер, затем HTTP-сервер (Postgres в кластере — bootstrap в приложении).
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			manifestsDir := ""
 			if len(args) > 1 {
@@ -99,10 +98,15 @@ func runServer() {
 	}
 	slog.SetDefault(slog.New(handler))
 
-	kubeConfig, err := clientcmd.BuildConfigFromFlags("", cfg.Kubeconfig)
+	kubeConfig, err := k8s.BuildRESTConfig(cfg.Kubeconfig)
 	if err != nil {
-		slog.Error("kubeconfig failed", "err", err)
+		slog.Error("kubernetes config failed", "err", err)
 		os.Exit(1)
+	}
+	if _, err := os.Stat("/var/run/secrets/kubernetes.io/serviceaccount/token"); err == nil {
+		slog.Info("kubernetes client: using in-cluster config")
+	} else {
+		slog.Info("kubernetes client: using kubeconfig", "path", cfg.Kubeconfig)
 	}
 
 	clientset, err := kubernetes.NewForConfig(kubeConfig)
@@ -189,6 +193,8 @@ func runServer() {
 		_, _ = pgStore.SeedDefaultUsersIfEmpty(seedCtx,
 			os.Getenv("FIRST_ADMIN_USER"), os.Getenv("FIRST_ADMIN_PASSWORD"),
 			os.Getenv("FIRST_VIEWER_USER"), os.Getenv("FIRST_VIEWER_PASSWORD"))
+		_ = pgStore.EnsureBaselineRBACGrants(seedCtx,
+			os.Getenv("FIRST_ADMIN_USER"), os.Getenv("FIRST_VIEWER_USER"))
 		seedCancel()
 		if os.Getenv("SEED_TEST_USERS") == "true" || os.Getenv("SEED_TEST_USERS") == "1" {
 			testCtx, testCancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -194,7 +194,28 @@ make dev-run         # поднять minikube+инфру и запустить 
 make dev-start       # поднять только minikube+инфру
 make dev-stop        # остановить dev-кластер
 make dev-restart     # stop + run
+make deploy-in-cluster  # образ + Deployment + Ingress в текущий кластер
+make deploy-undeploy    # удалить Deployment/Ingress/RBAC из кластера
 ```
+
+### Деплой в кластер одной командой (как под + Ingress)
+
+Сборка образа, RBAC, Deployment и Ingress (`deploy/ingress-dev.yaml`, HTTP без TLS):
+
+```bash
+make deploy-in-cluster
+```
+
+После деплоя (minikube + Docker driver):
+
+```bash
+echo "127.0.0.1 k8s-manager.local" | sudo tee -a /etc/hosts   # один раз
+minikube tunnel   # отдельный терминал
+```
+
+Откройте **http://k8s-manager.local** (не `https://`). Логин: **admin** / **secret**.
+
+Переопределение образа: `IMAGE=myregistry/k8s-manager:v1 make deploy-in-cluster`.
 
 Отдельный migration tooling лежит в `cmd/migrate/main.go`, SQL-файлы — в `migrations/` (`*.up.sql` и `*.down.sql`).
 Для migration CLI есть advisory lock (защита от параллельного запуска), а timeout на DB-операции настраивается через `MIGRATE_TIMEOUT` (по умолчанию `2m`, можно переопределить флагом `-timeout`, например `-timeout=5m`).
