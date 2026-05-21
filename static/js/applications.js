@@ -853,8 +853,7 @@ function showAppMetricsModal(appName, namespace, metrics) {
         }
     }
     
-    const modal = new bootstrap.Modal(modalElement);
-    modal.show();
+    bootstrap.Modal.getOrCreateInstance(modalElement).show();
 }
 
 function showScaleModal(appName, namespace, currentReplicas) {
@@ -885,8 +884,7 @@ function showScaleModal(appName, namespace, currentReplicas) {
         };
     }
     
-    const modal = new bootstrap.Modal(document.getElementById('scaleAppModal'));
-    modal.show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('scaleAppModal')).show();
 }
 
 async function confirmScale() {

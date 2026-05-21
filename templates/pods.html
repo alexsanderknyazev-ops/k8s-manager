@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/static/css/theme.css">
     <link rel="stylesheet" href="/static/css/layout.css">
     <link rel="stylesheet" href="/static/css/pods.css">
+    <link href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -267,7 +268,6 @@
     </div>
         </div>
     </div>
-</div>
 <!-- Модалки вынесены из main-content-wrap в body, чтобы не перекрывались backdrop'ом -->
     <!-- Модальное окно для Port-forwarding -->
     <div class="modal fade" id="portForwardModal" tabindex="-1">
@@ -727,10 +727,26 @@
                                 <textarea id="detail-yaml-editor" class="yaml-editor d-none" style="min-height: 400px;"></textarea>
                             </div>
                         </div>
-                        <!-- Console -->
+                        <!-- Console (inline terminal, no iframe) -->
                         <div class="tab-pane fade" id="tab-console" role="tabpanel">
                             <div class="detail-console-wrap">
-                                <iframe id="detail-console-iframe" title="Pod Console" class="detail-console-iframe"></iframe>
+                                <div class="detail-console-toolbar">
+                                    <span class="detail-console-title"><i class="fas fa-terminal me-1"></i><span id="detail-exec-pod-label">—</span></span>
+                                    <button type="button" id="detail-exec-connect-btn" class="btn btn-primary btn-sm">
+                                        <i class="fas fa-plug me-1"></i>Connect
+                                    </button>
+                                    <button type="button" id="detail-exec-disconnect-btn" class="btn btn-outline-danger btn-sm" style="display: none;">
+                                        <i class="fas fa-times me-1"></i>Disconnect
+                                    </button>
+                                    <span id="detail-exec-status" class="small text-muted"></span>
+                                </div>
+                                <div id="detail-exec-terminal-container" class="detail-exec-terminal-container" style="display: none;">
+                                    <div id="detail-exec-terminal"></div>
+                                </div>
+                                <div id="detail-exec-placeholder" class="detail-exec-placeholder text-muted">
+                                    <i class="fas fa-terminal fa-2x mb-2"></i>
+                                    <p class="mb-0 small">Click Connect to open a shell in the container.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -746,6 +762,9 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     {{template "scripts-utils" .}}
     <script src="/static/js/common.js"></script>
-    <script src="/static/js/pods.js?v=tabbed"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="/static/js/pod-exec.js"></script>
+    <script src="/static/js/pods.js?v=console-inline"></script>
 </body>
 </html>

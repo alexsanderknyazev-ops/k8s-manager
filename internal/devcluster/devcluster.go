@@ -8,8 +8,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
+
+// devClusterSkipMarket: при true не создаётся namespace market и не ставятся Zookeeper/Kafka.
+// Makefile для локальной разработки передаёт DEV_CLUSTER_SKIP_MARKET=1.
+func devClusterSkipMarket() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("DEV_CLUSTER_SKIP_MARKET")))
+	return v == "1" || v == "true" || v == "yes"
+}
 
 // startMinikubeStable поднимает minikube с явными ресурсами; при сбое пробует другой драйвер.
 // MINIKUBE_DRIVER=qemu2|docker — задать драйвер вручную. На darwin/arm64 по умолчанию пробуем qemu2 (стабильнее Docker).
@@ -58,8 +66,9 @@ func startMinikubeStable(ctx context.Context) error {
 	return fmt.Errorf("minikube failed to start with all drivers (tried: %v). Set MINIKUBE_DRIVER=qemu2 or docker", drivers)
 }
 
-// RunStart поднимает minikube (если не запущен), затем разворачивает в нём Zookeeper, Kafka и Postgres для тестов.
-// Postgres при первом запуске приложения поднимется сам (bootstrap). Здесь только minikube + Kafka + Zookeeper.
+// RunStart поднимает minikube (если не запущен), опционально Zookeeper/Kafka в namespace market,
+// предварительно тянет образ Postgres в minikube. Сам Postgres в кластере создаётся при старте приложения (bootstrap).
+// Без market/Kafka: DEV_CLUSTER_SKIP_MARKET=1 (см. цель make dev).
 func RunStart(ctx context.Context, manifestsDir string) error {
 	if manifestsDir == "" {
 		manifestsDir = "deploy/dev-cluster"
@@ -92,26 +101,30 @@ func RunStart(ctx context.Context, manifestsDir string) error {
 		time.Sleep(2 * time.Second)
 	}
 
-	// Namespace, затем Zookeeper, затем Kafka (порядок важен: namespace должен быть первым)
-	slog.Info("deploying namespace, Zookeeper and Kafka...")
-	for _, name := range []string{"namespace.yaml", "zookeeper.yaml", "kafka.yaml"} {
-		path := filepath.Join(absDir, name)
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			continue
+	if devClusterSkipMarket() {
+		slog.Info("skipping market namespace (Zookeeper/Kafka): DEV_CLUSTER_SKIP_MARKET is set")
+	} else {
+		// Namespace, затем Zookeeper, затем Kafka (порядок важен: namespace должен быть первым)
+		slog.Info("deploying namespace, Zookeeper and Kafka...")
+		for _, name := range []string{"namespace.yaml", "zookeeper.yaml", "kafka.yaml"} {
+			path := filepath.Join(absDir, name)
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				continue
+			}
+			apply := exec.CommandContext(ctx, "kubectl", "apply", "-f", path)
+			apply.Stdout = os.Stdout
+			apply.Stderr = os.Stderr
+			if err := apply.Run(); err != nil {
+				return fmt.Errorf("kubectl apply -f %s: %w", name, err)
+			}
 		}
-		apply := exec.CommandContext(ctx, "kubectl", "apply", "-f", path)
-		apply.Stdout = os.Stdout
-		apply.Stderr = os.Stderr
-		if err := apply.Run(); err != nil {
-			return fmt.Errorf("kubectl apply -f %s: %w", name, err)
-		}
-	}
 
-	slog.Info("waiting for Zookeeper and Kafka pods (up to 2 min)...")
-	waitCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	_ = exec.CommandContext(waitCtx, "kubectl", "wait", "--namespace=market", "--for=condition=ready", "pod", "-l", "app=zookeeper", "--timeout=120s").Run()
-	_ = exec.CommandContext(waitCtx, "kubectl", "wait", "--namespace=market", "--for=condition=ready", "pod", "-l", "app=kafka-service", "--timeout=120s").Run()
+		slog.Info("waiting for Zookeeper and Kafka pods (up to 2 min)...")
+		waitCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+		_ = exec.CommandContext(waitCtx, "kubectl", "wait", "--namespace=market", "--for=condition=ready", "pod", "-l", "app=zookeeper", "--timeout=120s").Run()
+		_ = exec.CommandContext(waitCtx, "kubectl", "wait", "--namespace=market", "--for=condition=ready", "pod", "-l", "app=kafka-service", "--timeout=120s").Run()
+	}
 
 	// Предзагрузка образа Postgres в ноду minikube (не создаём под — не нужен ServiceAccount)
 	slog.Info("pre-pulling postgres image (so app bootstrap is faster)...")
@@ -126,12 +139,20 @@ func RunStart(ctx context.Context, manifestsDir string) error {
 		slog.Info("postgres image pre-pulled")
 	}
 
-	slog.Info("dev cluster started",
-		"minikube", "running",
-		"kafka", "market/kafka-service",
-		"zookeeper", "market/zookeeper",
-		"postgres", "run the app to bootstrap in default namespace",
-	)
+	if devClusterSkipMarket() {
+		slog.Info("dev cluster started",
+			"minikube", "running",
+			"market_kafka", "skipped",
+			"postgres", "run the app to bootstrap in default namespace",
+		)
+	} else {
+		slog.Info("dev cluster started",
+			"minikube", "running",
+			"kafka", "market/kafka-service",
+			"zookeeper", "market/zookeeper",
+			"postgres", "run the app to bootstrap in default namespace",
+		)
+	}
 	return nil
 }
 

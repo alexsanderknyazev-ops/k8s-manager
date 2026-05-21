@@ -1,0 +1,70 @@
+/* Full-page exec (sidebar + breadcrumb) */
+#terminal-container {
+    min-height: 400px;
+}
+
+/* Embedded in pod details modal iframe — no app chrome */
+body.exec-embed {
+    margin: 0;
+    overflow: hidden;
+    background: #1e1e1e;
+}
+
+.exec-embed-root {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    min-height: 0;
+}
+
+.exec-embed-toolbar {
+    flex-shrink: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.exec-embed-toolbar .exec-embed-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-right: auto;
+}
+
+.exec-embed-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: #1e1e1e;
+}
+
+body.exec-embed #terminal-container {
+    flex: 1;
+    display: none;
+    height: auto !important;
+    min-height: 0;
+    padding: 4px;
+}
+
+body.exec-embed #exec-placeholder {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #adb5bd;
+    background: #1e1e1e;
+}
+
+body.exec-embed #exec-placeholder .text-muted {
+    color: #adb5bd !important;
+}
+
+body.exec-embed #terminal {
+    width: 100%;
+    height: 100%;
+}

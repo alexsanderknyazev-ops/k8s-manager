@@ -97,7 +97,10 @@ func setupAppRoutes(r *gin.Engine, handler *handlers.Handler, cfg *config.Config
 		c.HTML(http.StatusOK, "pods.html", pageData(c, "Pods"))
 	})
 	r.GET("/ui/exec", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "exec.html", pageData(c, "Pod Terminal"))
+		data := pageData(c, "Pod Terminal")
+		q := c.Query("embed")
+		data["Embed"] = q == "1" || q == "true" || q == "yes"
+		c.HTML(http.StatusOK, "exec.html", data)
 	})
 
 	r.GET("/ui/deployments", func(c *gin.Context) {

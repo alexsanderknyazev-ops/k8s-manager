@@ -1,4 +1,8 @@
-.PHONY: build test test-js test-all run docker-build docker-run clean migrate-up migrate-down migrate-status dev-run dev-start dev-stop dev-restart
+DEV_PORT ?= 7777
+# Драйвер minikube при первом старте из make dev (переопределение: make dev MINIKUBE_DRIVER=qemu2)
+MINIKUBE_DRIVER ?= docker
+
+.PHONY: build test test-js test-all run docker-build docker-run clean migrate-up migrate-down migrate-status dev dev-run dev-with-kafka dev-start dev-stop dev-restart deploy-in-cluster deploy-undeploy
 
 build:
 	go build -o k8s-manager .
@@ -40,14 +44,33 @@ migrate-down:
 migrate-status:
 	go run ./cmd/migrate/main.go -action status
 
-dev-run:
-	go run . dev-cluster run
+# Один шаг: minikube (docker по умолчанию), без namespace market/Kafka/ZK; затем HTTP-сервер (Postgres — bootstrap при старте).
+# Порт: DEV_PORT (по умолчанию 7777). Полный стек с Kafka: make dev-with-kafka
+dev dev-run:
+	PORT=$(DEV_PORT) DEV_CLUSTER_SKIP_MARKET=1 MINIKUBE_DRIVER=$(MINIKUBE_DRIVER) go run . dev-cluster run
+
+# Тот же сценарий, но с market + Zookeeper + Kafka (долго, нужен только если тестируешь Kafka).
+dev-with-kafka:
+	PORT=$(DEV_PORT) MINIKUBE_DRIVER=$(MINIKUBE_DRIVER) go run . dev-cluster run
 
 dev-start:
-	go run . dev-cluster start
+	DEV_CLUSTER_SKIP_MARKET=1 MINIKUBE_DRIVER=$(MINIKUBE_DRIVER) go run . dev-cluster start
 
 dev-stop:
 	go run . dev-cluster stop
 
 dev-restart:
-	go run . dev-cluster stop && go run . dev-cluster run
+	go run . dev-cluster stop && PORT=$(DEV_PORT) DEV_CLUSTER_SKIP_MARKET=1 MINIKUBE_DRIVER=$(MINIKUBE_DRIVER) go run . dev-cluster run
+
+# Сборка образа + Deployment + Ingress в текущий kubectl-контекст (minikube: образ в minikube docker-env).
+deploy-in-cluster:
+	./scripts/deploy-in-cluster.sh
+
+# Удалить и заново поднять в кластере.
+deploy-redeploy: deploy-undeploy deploy-in-cluster
+
+# Удалить release из кластера (namespace k8s-manager остаётся).
+deploy-undeploy:
+	kubectl delete -f deploy/ingress-dev.yaml --ignore-not-found
+	kubectl delete -f deploy/deployment.yaml --ignore-not-found
+	kubectl delete -f deploy/rbac.yaml --ignore-not-found

@@ -320,11 +320,11 @@ body {
     font-size: 0.7rem;
 }
 
-/* Модалки и backdrop: модалка всегда поверх затемнения (backdrop в body иначе перекрывает контент) */
-body > .modal-backdrop {
+/* Модалки и backdrop: backdrop ниже .modal (в т.ч. когда .modal — прямой потомок body после переноса в шаблонах) */
+.modal-backdrop {
     z-index: 1040 !important;
 }
-body > .modal.show {
+.modal.show {
     z-index: 1060 !important;
 }
 

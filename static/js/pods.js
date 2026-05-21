@@ -23,6 +23,9 @@ let podsRefreshInterval = null;
 let detailLogWebSocket = null;
 let detailLogMessages = [];
 
+// Exec в модалке пода (вкладка Console)
+let detailPodExec = null;
+
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', async function() {
     if (typeof loadNamespacesIntoSelect === 'function') {
@@ -1884,7 +1887,6 @@ async function showPodDetails(namespace, podName) {
         el.addEventListener('shown.bs.modal', function() {
             if (!currentPod) return;
             startDetailLogs();
-            initDetailConsoleTab();
             const logsTab = document.getElementById('tab-logs-btn');
             if (logsTab && typeof bootstrap !== 'undefined' && bootstrap.Tab) {
                 try { bootstrap.Tab.getOrCreateInstance(logsTab).show(); } catch (_) {}
@@ -1892,8 +1894,7 @@ async function showPodDetails(namespace, podName) {
         });
         el.addEventListener('hidden.bs.modal', function() {
             stopDetailLogs();
-            const iframe = document.getElementById('detail-console-iframe');
-            if (iframe) iframe.src = 'about:blank';
+            stopDetailConsole();
             if (typeof loadLogStreamSessions === 'function') loadLogStreamSessions();
         });
     }
@@ -1935,9 +1936,40 @@ function initDetailPortForwardTab() {
 }
 
 function initDetailConsoleTab() {
-    if (!currentPod) return;
-    const iframe = document.getElementById('detail-console-iframe');
-    iframe.src = `/ui/exec?namespace=${encodeURIComponent(currentPod.namespace)}&pod=${encodeURIComponent(currentPod.name)}`;
+    if (!currentPod || typeof PodExec === 'undefined') return;
+    const label = document.getElementById('detail-exec-pod-label');
+    if (label) label.textContent = `${currentPod.namespace}/${currentPod.name}`;
+    if (!detailPodExec) {
+        detailPodExec = PodExec.create({
+            ids: {
+                namespace: 'detail-exec-namespace-hidden',
+                pod: 'detail-exec-pod-hidden',
+                container: 'detail-exec-container-hidden',
+                terminal: 'detail-exec-terminal',
+                terminalContainer: 'detail-exec-terminal-container',
+                placeholder: 'detail-exec-placeholder',
+                status: 'detail-exec-status',
+                connectBtn: 'detail-exec-connect-btn',
+                disconnectBtn: 'detail-exec-disconnect-btn',
+                podLabel: 'detail-exec-pod-label'
+            },
+            getParams: function() {
+                if (!currentPod) return { namespace: '', pod: '', container: '' };
+                return {
+                    namespace: currentPod.namespace,
+                    pod: currentPod.name,
+                    container: ''
+                };
+            }
+        });
+    }
+    detailPodExec.connect();
+}
+
+function stopDetailConsole() {
+    if (detailPodExec) {
+        detailPodExec.disconnect();
+    }
 }
 
 function startDetailLogs() {

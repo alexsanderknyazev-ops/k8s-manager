@@ -505,8 +505,7 @@ async function scaleSelectedDeployments() {
     });
     
     document.getElementById('selected-count').textContent = selectedDeployments.size;
-    const modal = new bootstrap.Modal(document.getElementById('bulkScaleModal'));
-    modal.show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('bulkScaleModal')).show();
 }
 
 async function applyBulkScale() {
@@ -666,8 +665,7 @@ async function showManagePods(namespace, name, currentReplicas) {
     document.getElementById('current-replica-count').textContent = currentReplicas;
     document.getElementById('new-replica-count').value = currentReplicas;
     
-    const modal = new bootstrap.Modal(document.getElementById('managePodsModal'));
-    modal.show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('managePodsModal')).show();
     
     await loadDeploymentPodsDetailed(namespace, name);
 }
@@ -893,15 +891,8 @@ function showScaleModal(namespace, name, currentReplicas) {
     document.getElementById('replicas-slider').value = currentReplicas;
     document.getElementById('replicas-input').value = currentReplicas;
     document.getElementById('replicas-value').textContent = currentReplicas;
-    
-    // Инициализируем слайдер
-    $('#replicas-slider').slider({
-        tooltip: 'always',
-        tooltip_position: 'bottom'
-    });
-    
-    const modal = new bootstrap.Modal(document.getElementById('scaleModal'));
-    modal.show();
+
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('scaleModal')).show();
 }
 
 // Масштабирование деплоймента
@@ -945,8 +936,7 @@ function showRestartModal(namespace, name) {
     currentDeployment = { namespace, name };
     
     document.getElementById('restart-deployment-name').textContent = name;
-    const modal = new bootstrap.Modal(document.getElementById('restartModal'));
-    modal.show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('restartModal')).show();
 }
 
 // Подтверждение рестарта
@@ -973,7 +963,7 @@ async function confirmRestart() {
 function showRollbackModal(namespace, name) {
     currentDeployment = { namespace, name };
     document.getElementById('rollback-deployment-name').textContent = name;
-    new bootstrap.Modal(document.getElementById('rollbackModal')).show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('rollbackModal')).show();
 }
 
 async function confirmRollback() {
@@ -994,8 +984,7 @@ function showDeleteModal(namespace, name) {
     currentDeployment = { namespace, name };
     
     document.getElementById('delete-deployment-name').textContent = name;
-    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
-    modal.show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteModal')).show();
 }
 
 // Подтверждение удаления
@@ -1025,8 +1014,7 @@ async function showConfig(namespace, name) {
     currentDeployment = { namespace, name };
     
     document.getElementById('config-deployment-name').textContent = name;
-    const modal = new bootstrap.Modal(document.getElementById('configModal'));
-    modal.show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('configModal')).show();
     
     await loadYAML();
 }

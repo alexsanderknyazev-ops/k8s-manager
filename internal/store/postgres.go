@@ -191,6 +191,20 @@ func (s *PostgresStore) HasPermission(ctx context.Context, subject, namespace, r
 	return err == nil && n > 0
 }
 
+// applyRoleDefaultPermissions выдаёт базовые права по роли (admin — всё, viewer — read).
+func (s *PostgresStore) applyRoleDefaultPermissions(ctx context.Context, username, role, grantedBy string) error {
+	if username == "" {
+		return nil
+	}
+	if role != RoleAdmin {
+		role = RoleViewer
+	}
+	if role == RoleAdmin {
+		return s.GrantPermission(ctx, username, "*", "*", "*", grantedBy)
+	}
+	return s.GrantPermission(ctx, username, "*", "*", "read", grantedBy)
+}
+
 func (s *PostgresStore) GrantPermission(ctx context.Context, subject, namespace, resource, verb, grantedBy string) error {
 	if namespace == "" {
 		namespace = "*"
@@ -368,7 +382,10 @@ func (s *PostgresStore) CreateUser(ctx context.Context, username, password, role
 		`INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) ON CONFLICT (username) DO NOTHING`,
 		username, string(hash), role,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.applyRoleDefaultPermissions(ctx, username, role, "create_user")
 }
 
 // ListUsers возвращает список пользователей без паролей (username, role).
@@ -400,6 +417,11 @@ func (s *PostgresStore) UpdateRole(ctx context.Context, username, role string) e
 	if err != nil {
 		return err
 	}
+	// Сброс granular-прав под новую роль (иначе после понижения admin останутся */*/*).
+	_, _ = s.pool.Exec(ctx, `DELETE FROM user_permissions WHERE subject = $1`, username)
+	if err := s.applyRoleDefaultPermissions(ctx, username, role, "role_sync"); err != nil {
+		return err
+	}
 	return s.DeleteSessionsByUsername(ctx, username)
 }
 
@@ -419,6 +441,7 @@ func (s *PostgresStore) SetPassword(ctx context.Context, username, newPassword s
 // DeleteUser удаляет пользователя по логину.
 func (s *PostgresStore) DeleteUser(ctx context.Context, username string) error {
 	_, _ = s.pool.Exec(ctx, `DELETE FROM sessions WHERE username = $1`, username)
+	_, _ = s.pool.Exec(ctx, `DELETE FROM user_permissions WHERE subject = $1`, username)
 	_, err := s.pool.Exec(ctx, `DELETE FROM users WHERE username = $1`, username)
 	return err
 }
@@ -474,6 +497,35 @@ func (s *PostgresStore) SeedDefaultUsersIfEmpty(ctx context.Context, adminUser, 
 	}
 	slog.Info("postgres: seeded default viewer", "username", viewerUser)
 	return true, nil
+}
+
+// EnsureBaselineRBACGrants выставляет базовые права для логинов admin/viewer (имена из FIRST_* или admin/viewer).
+// Идемпотентно (ON CONFLICT). Нельзя опираться только на «таблица user_permissions пуста»: там могут быть строки
+// для OIDC-тестов и т.д., а у admin всё равно не будет прав → 403 на /api/pods.
+func (s *PostgresStore) EnsureBaselineRBACGrants(ctx context.Context, adminUser, viewerUser string) error {
+	if adminUser == "" {
+		adminUser = "admin"
+	}
+	if viewerUser == "" {
+		viewerUser = "viewer"
+	}
+	var adminExists, viewerExists bool
+	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)`, adminUser).Scan(&adminExists); err != nil {
+		return err
+	}
+	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)`, viewerUser).Scan(&viewerExists); err != nil {
+		return err
+	}
+	if adminExists {
+		_ = s.applyRoleDefaultPermissions(ctx, adminUser, RoleAdmin, "seed")
+	}
+	if viewerExists {
+		_ = s.applyRoleDefaultPermissions(ctx, viewerUser, RoleViewer, "seed")
+	}
+	if adminExists || viewerExists {
+		slog.Info("postgres: ensured baseline rbac grants", "admin", adminUser, "viewer", viewerUser)
+	}
+	return nil
 }
 
 // Close закрывает пул соединений.
