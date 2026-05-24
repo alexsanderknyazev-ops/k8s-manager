@@ -23,10 +23,12 @@ fi
 
 docker build -t "${IMAGE}" "${ROOT}"
 
-echo "==> Applying manifests (rbac, deployment, ingress-dev)"
+echo "==> Applying manifests (rbac, deployment, ingress-dev, prometheus, grafana)"
 kubectl apply -f "${ROOT}/deploy/rbac.yaml"
 kubectl apply -f "${ROOT}/deploy/deployment.yaml"
 kubectl apply -f "${ROOT}/deploy/ingress-dev.yaml"
+kubectl apply -f "${ROOT}/deploy/dev-cluster/prometheus.yaml"
+kubectl apply -f "${ROOT}/deploy/grafana-provisioning.yaml"
 
 echo "==> Waiting for rollout"
 kubectl -n "${NAMESPACE}" rollout status "deployment/k8s-manager" --timeout="${ROLLOUT_TIMEOUT}"
@@ -55,4 +57,8 @@ echo ""
 echo "Без Ingress:"
 echo "   kubectl -n ${NAMESPACE} port-forward svc/k8s-manager 8080:8080"
 echo "   http://localhost:8080"
+echo ""
+echo "Grafana (admin/admin):"
+echo "   kubectl -n ${NAMESPACE} port-forward svc/grafana 3000:3000"
+echo "   http://localhost:3000"
 echo ""

@@ -72,9 +72,9 @@ docker build -t k8s-manager .
 docker run --rm -p 8080:8080 -v "$HOME/.kube:/root/.kube:ro" -e AUTH_USER=admin -e AUTH_PASSWORD=secret k8s-manager
 ```
 
-### Dev-кластер (Minikube + Kafka + Zookeeper + Postgres)
+### Dev-кластер (Minikube + Prometheus + Grafana + Postgres)
 
-Удобный сценарий для тестов: **одна команда** поднимает minikube, разворачивает Zookeeper и Kafka (namespace `market`), затем запускает приложение — оно само поднимает Postgres в namespace `default` и создаёт пользователей admin/viewer.
+Удобный сценарий для тестов: **одна команда** поднимает minikube, Prometheus и Grafana, затем запускает приложение — оно само поднимает Postgres в namespace `default` и создаёт пользователей admin/viewer.
 
 **Требования:** установленные [minikube](https://minikube.sigs.k8s.io/) и `kubectl`. Для стабильного старта minikube поднимается с `--memory=4g --cpus=2`. На Mac (arm64) сначала пробуется драйвер **qemu2** (часто стабильнее Docker) — установка: `brew install qemu`. Задать драйвер вручную: `MINIKUBE_DRIVER=docker go run . dev-cluster run`.
 
@@ -95,7 +95,16 @@ make dev-run
 | `dev` | `devpass` | `default/deployments/write`, `default/pods/read`, `default/services/read` |
 | `ops` | `opspass` | `default/pods/write`, `default/deployments/read` |
 
-После старта откройте http://localhost:8080 (логин **admin** / **secret**). В Pods будут namespace **default** (Postgres) и **market** (Kafka, Zookeeper).
+После старта откройте http://localhost:7777 (или `DEV_PORT`, по умолчанию 7777; логин **admin** / **secret**).
+
+**Grafana** (дашборды K8s Manager, логин **admin** / **admin**):
+
+```bash
+kubectl -n k8s-manager port-forward svc/grafana 3000:3000
+# http://localhost:3000
+```
+
+**Prometheus:** `kubectl -n monitoring port-forward svc/prometheus-server 9090:80`
 
 **Остановить dev-среду:**
 
@@ -113,7 +122,7 @@ go run . dev-cluster stop && go run . dev-cluster run
 make dev-restart
 ```
 
-Отдельно: `go run . dev-cluster start` — только поднять кластер и Kafka/Zookeeper; затем `go run .` — только приложение. Манифесты: `deploy/dev-cluster/` (namespace market, Zookeeper, Kafka).
+Отдельно: `go run . dev-cluster start` — только minikube + Prometheus + Grafana; затем `go run .` — только приложение. Манифесты: `deploy/dev-cluster/prometheus.yaml`, `deploy/grafana-provisioning.yaml`.
 
 ## Переменные окружения
 
@@ -224,7 +233,8 @@ minikube tunnel   # отдельный терминал
 
 Все манифесты в каталоге `deploy/`:
 
-- **`deploy/dev-cluster/`** — namespace `market`, Zookeeper и Kafka; используются командой `go run . dev-cluster run` (или `start`). Postgres в `default` создаётся приложением при старте (bootstrap).
+- **`deploy/dev-cluster/prometheus.yaml`** — Prometheus в namespace `monitoring` (скрейп `/metrics` приложения).
+- **`deploy/grafana-provisioning.yaml`** — Grafana в `k8s-manager` с дашбордами; поднимается в `dev-cluster start` и `make deploy-in-cluster`.
 - **`deploy/deployment.yaml`**, **`deploy/rbac.yaml`**, **`deploy/ingress.yaml`** — K8s Manager (namespace `k8s-manager`).
 - **`deploy/postgres-market.yaml`** — ручной деплой PostgreSQL в namespace `market` (опционально; для аутентификации обычно достаточно bootstrap в `default`).
 - **`deploy/k8s-manager-default.yaml`** — альтернативный деплой приложения в namespace `default` (SA, RBAC, Deployment, Service, Ingress).

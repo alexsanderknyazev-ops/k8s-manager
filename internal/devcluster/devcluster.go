@@ -8,16 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 )
-
-// devClusterSkipMarket: при true не создаётся namespace market и не ставятся Zookeeper/Kafka.
-// Makefile для локальной разработки передаёт DEV_CLUSTER_SKIP_MARKET=1.
-func devClusterSkipMarket() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("DEV_CLUSTER_SKIP_MARKET")))
-	return v == "1" || v == "true" || v == "yes"
-}
 
 // startMinikubeStable поднимает minikube с явными ресурсами; при сбое пробует другой драйвер.
 // MINIKUBE_DRIVER=qemu2|docker — задать драйвер вручную. На darwin/arm64 по умолчанию пробуем qemu2 (стабильнее Docker).
@@ -27,7 +19,6 @@ func startMinikubeStable(ctx context.Context) error {
 		return nil
 	}
 
-	// Порядок драйверов: на Mac ARM часто стабильнее qemu2; можно задать MINIKUBE_DRIVER
 	var drivers []string
 	if d := os.Getenv("MINIKUBE_DRIVER"); d != "" {
 		drivers = []string{d}
@@ -37,7 +28,6 @@ func startMinikubeStable(ctx context.Context) error {
 		drivers = []string{"docker", "qemu2"}
 	}
 
-	// Явные ресурсы уменьшают "container exited unexpectedly"
 	args := []string{"start", "--memory=4g", "--cpus=2", "--disk-size=20g"}
 
 	for _, driver := range drivers {
@@ -50,7 +40,6 @@ func startMinikubeStable(ctx context.Context) error {
 			slog.Info("minikube started", "driver", driver)
 			return nil
 		}
-		// При сбое — удаляем и пробуем ещё раз с тем же драйвером (часто помогает после delete)
 		slog.Warn("minikube start failed, deleting and retrying once", "driver", driver, "err", err)
 		_ = exec.CommandContext(ctx, "minikube", "delete").Run()
 		time.Sleep(3 * time.Second)
@@ -66,9 +55,59 @@ func startMinikubeStable(ctx context.Context) error {
 	return fmt.Errorf("minikube failed to start with all drivers (tried: %v). Set MINIKUBE_DRIVER=qemu2 or docker", drivers)
 }
 
-// RunStart поднимает minikube (если не запущен), опционально Zookeeper/Kafka в namespace market,
-// предварительно тянет образ Postgres в minikube. Сам Postgres в кластере создаётся при старте приложения (bootstrap).
-// Без market/Kafka: DEV_CLUSTER_SKIP_MARKET=1 (см. цель make dev).
+func kubectlApply(ctx context.Context, path string) error {
+	apply := exec.CommandContext(ctx, "kubectl", "apply", "-f", path)
+	apply.Stdout = os.Stdout
+	apply.Stderr = os.Stderr
+	if err := apply.Run(); err != nil {
+		return fmt.Errorf("kubectl apply -f %s: %w", path, err)
+	}
+	return nil
+}
+
+func waitPodsReady(ctx context.Context, namespace, labelSelector, timeout string) {
+	cmd := exec.CommandContext(ctx, "kubectl", "wait",
+		"--namespace="+namespace,
+		"--for=condition=ready",
+		"pod",
+		"-l", labelSelector,
+		"--timeout="+timeout,
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		slog.Warn("wait for pods", "namespace", namespace, "selector", labelSelector, "err", err)
+	}
+}
+
+// deployObservability поднимает Prometheus (monitoring) и Grafana (k8s-manager) для dev.
+func deployObservability(ctx context.Context, devClusterDir, deployDir string) error {
+	prometheusPath := filepath.Join(devClusterDir, "prometheus.yaml")
+	grafanaPath := filepath.Join(deployDir, "grafana-provisioning.yaml")
+
+	slog.Info("deploying Prometheus and Grafana...")
+	if err := kubectlApply(ctx, prometheusPath); err != nil {
+		return err
+	}
+	if err := kubectlApply(ctx, grafanaPath); err != nil {
+		return err
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	waitPodsReady(waitCtx, "monitoring", "app=prometheus-server", "180s")
+	waitPodsReady(waitCtx, "k8s-manager", "app=grafana", "180s")
+
+	slog.Info("observability ready",
+		"prometheus", "monitoring/prometheus-server:80",
+		"grafana", "k8s-manager/grafana:3000 (admin/admin)",
+		"grafana_port_forward", "kubectl -n k8s-manager port-forward svc/grafana 3000:3000",
+	)
+	return nil
+}
+
+// RunStart поднимает minikube (если не запущен), Prometheus и Grafana.
+// Postgres в кластере создаётся при старте приложения (bootstrap).
 func RunStart(ctx context.Context, manifestsDir string) error {
 	if manifestsDir == "" {
 		manifestsDir = "deploy/dev-cluster"
@@ -80,13 +119,12 @@ func RunStart(ctx context.Context, manifestsDir string) error {
 	if _, err := os.Stat(absDir); os.IsNotExist(err) {
 		return fmt.Errorf("manifests dir not found: %s", absDir)
 	}
+	deployDir := filepath.Dir(absDir)
 
-	// Стабильный запуск minikube: явные ресурсы, выбор драйвера, повтор при сбое
 	if err := startMinikubeStable(ctx); err != nil {
 		return err
 	}
 
-	// Ждём, пока kubectl начнёт отвечать
 	slog.Info("waiting for cluster...")
 	for i := 0; i < 30; i++ {
 		select {
@@ -101,32 +139,10 @@ func RunStart(ctx context.Context, manifestsDir string) error {
 		time.Sleep(2 * time.Second)
 	}
 
-	if devClusterSkipMarket() {
-		slog.Info("skipping market namespace (Zookeeper/Kafka): DEV_CLUSTER_SKIP_MARKET is set")
-	} else {
-		// Namespace, затем Zookeeper, затем Kafka (порядок важен: namespace должен быть первым)
-		slog.Info("deploying namespace, Zookeeper and Kafka...")
-		for _, name := range []string{"namespace.yaml", "zookeeper.yaml", "kafka.yaml"} {
-			path := filepath.Join(absDir, name)
-			if _, err := os.Stat(path); os.IsNotExist(err) {
-				continue
-			}
-			apply := exec.CommandContext(ctx, "kubectl", "apply", "-f", path)
-			apply.Stdout = os.Stdout
-			apply.Stderr = os.Stderr
-			if err := apply.Run(); err != nil {
-				return fmt.Errorf("kubectl apply -f %s: %w", name, err)
-			}
-		}
-
-		slog.Info("waiting for Zookeeper and Kafka pods (up to 2 min)...")
-		waitCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		defer cancel()
-		_ = exec.CommandContext(waitCtx, "kubectl", "wait", "--namespace=market", "--for=condition=ready", "pod", "-l", "app=zookeeper", "--timeout=120s").Run()
-		_ = exec.CommandContext(waitCtx, "kubectl", "wait", "--namespace=market", "--for=condition=ready", "pod", "-l", "app=kafka-service", "--timeout=120s").Run()
+	if err := deployObservability(ctx, absDir, deployDir); err != nil {
+		return err
 	}
 
-	// Предзагрузка образа Postgres в ноду minikube (не создаём под — не нужен ServiceAccount)
 	slog.Info("pre-pulling postgres image (so app bootstrap is faster)...")
 	pullCtx, pullCancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer pullCancel()
@@ -139,20 +155,12 @@ func RunStart(ctx context.Context, manifestsDir string) error {
 		slog.Info("postgres image pre-pulled")
 	}
 
-	if devClusterSkipMarket() {
-		slog.Info("dev cluster started",
-			"minikube", "running",
-			"market_kafka", "skipped",
-			"postgres", "run the app to bootstrap in default namespace",
-		)
-	} else {
-		slog.Info("dev cluster started",
-			"minikube", "running",
-			"kafka", "market/kafka-service",
-			"zookeeper", "market/zookeeper",
-			"postgres", "run the app to bootstrap in default namespace",
-		)
-	}
+	slog.Info("dev cluster started",
+		"minikube", "running",
+		"prometheus", "monitoring/prometheus-server",
+		"grafana", "k8s-manager/grafana",
+		"postgres", "run the app to bootstrap in default namespace",
+	)
 	return nil
 }
 

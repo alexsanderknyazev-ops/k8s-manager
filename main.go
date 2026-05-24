@@ -25,7 +25,7 @@ import (
 )
 
 func main() {
-	// Подкоманда dev-cluster: minikube и опционально market/Kafka/ZK (см. DEV_CLUSTER_SKIP_MARKET), Postgres — при старте приложения.
+	// Подкоманда dev-cluster: minikube + Prometheus/Grafana; Postgres — при старте приложения.
 	if len(os.Args) >= 2 && os.Args[1] == "dev-cluster" {
 		args := os.Args[2:]
 		if len(args) >= 1 && args[0] == "run" {
